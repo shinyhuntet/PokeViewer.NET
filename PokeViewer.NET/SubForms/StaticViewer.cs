@@ -1,4 +1,4 @@
-﻿using PKHeX.Core;
+using PKHeX.Core;
 using static PokeViewer.NET.RoutineExecutor;
 using static PokeViewer.NET.ViewerUtil;
 using static System.Buffers.Binary.BinaryPrimitives;
@@ -537,7 +537,13 @@ namespace PokeViewer.NET.SubForms
                         await SetStick(SwitchStick.LEFT, 0, 0, 0_500, token).ConfigureAwait(false);
                     }
 ReSave:
-                    await GotoAcurateCoord(token).ConfigureAwait(false);
+                    if(!CoordCheck.Checked)
+                     await GotoAcurateCoord(token).ConfigureAwait(false);
+                    else
+                     {
+                        await DefeatPokemon(token).ConfigureAwait(false);
+                        await ToGameOverworld(token).ConfigureAwait(false);
+                     }
                     await SVSaveGameOverworldStatic(token).ConfigureAwait(false);
                     (LastSaveInit, var LastSaved, DateTime CurDate) = await GetLastSaveTime(LastSaveInit, token).ConfigureAwait(false);
                     LastSavedBox.Text = $"{CurDate}";
