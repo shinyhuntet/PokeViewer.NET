@@ -533,7 +533,7 @@ namespace PokeViewer.NET.SubForms
                     }
                     else
                     {
-                        await SetStick(SwitchStick.LEFT, 0, 30000, 4_000, token).ConfigureAwait(false);
+                        await SetStick(SwitchStick.LEFT, 0, 30000, (int)DelayNum.Value, token).ConfigureAwait(false);
                         await SetStick(SwitchStick.LEFT, 0, 0, 0_500, token).ConfigureAwait(false);
                     }
 ReSave:
