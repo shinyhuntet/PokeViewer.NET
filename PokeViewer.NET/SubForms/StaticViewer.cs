@@ -538,7 +538,7 @@ namespace PokeViewer.NET.SubForms
                     }
 ReSave:
                     if(!CoordCheck.Checked)
-                     await GotoAcurateCoord(token).ConfigureAwait(false);
+                        await GotoAcurateCoord(token).ConfigureAwait(false);
                     else
                      {
                         await DefeatPokemon(token).ConfigureAwait(false);
