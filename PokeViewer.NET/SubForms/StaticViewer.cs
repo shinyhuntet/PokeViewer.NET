@@ -615,7 +615,7 @@ ReSave:
                     coordList.Add(coord);
                     if (staticfound)
                     {
-                        if (pk.IsShiny && !match)
+                        if (!match)
                             WebHookUtil.SendDetailNotifications(pk, sprite, false, TrainerInfo);
                         break;
                     }
