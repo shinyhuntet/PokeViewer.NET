@@ -572,7 +572,8 @@ ReSave:
                     string output = $"Reset #{resetcount} (Rate: {100.00 * encountercount / resetcount : 0.00}%){Environment.NewLine}" + outst;
                     textBox1.Text = output;
                     var Rate = SubForms.StopConditions.CalcRate(encounterFilters);
-                    RateBox.Text = $"Encounter #{encountercount}{Environment.NewLine}Target Rate: {(1.00 - Math.Pow(1.00 - Rate, encountercount)) * 100.00:0.00}%";
+                    var DisplayRate = (1.00 - Math.Pow(1.00 - Rate, encountercount)) * 100.00;
+                    RateBox.Text = $"Encounter #{encountercount}{Environment.NewLine}Target Rate: {DisplayRate:0.00}%";
                     sprite = PokeImg(pk, false);
                     var response = await client.GetStreamAsync(sprite, token).ConfigureAwait(false);
                     Image img = Image.FromStream(response);
@@ -614,7 +615,7 @@ ReSave:
                     if (staticfound)
                     {
                         if (!match)
-                            WebHookUtil.SendDetailNotifications(pk, sprite, false, TrainerInfo, true, encountercount, (1.00 - Math.Pow(1.00 - Rate, encountercount)) * 100.00);
+                            WebHookUtil.SendDetailNotifications(pk, sprite, false, TrainerInfo, true, encountercount, DisplayRate);
                         break;
                     }
                 }
