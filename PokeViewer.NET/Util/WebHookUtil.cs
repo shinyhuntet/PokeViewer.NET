@@ -1,4 +1,4 @@
-﻿using Newtonsoft.Json;
+using Newtonsoft.Json;
 using PokeViewer.NET.Properties;
 using System.Text;
 using PKHeX.Core;
@@ -88,7 +88,7 @@ public static class WebHookUtil
     {
         GameStrings Strings = GameInfo.GetStrings("en");
         string userContent = pinguser ? $"<@{Settings.Default.UserDiscordID}>\n{Settings.Default.PingMessage}" : "";
-        string title = pinguser ? $"Match Found!" : isStaic ? $"Static Pokemon Found!{Environment.NewLine}Encounter #{Encounter}, Target Rate: {Rate:0.00}%" : "Unwanted match..";
+        string title = pinguser ? $"Match Found!" : isStaic ? $"Static Pokemon Found!{Environment.NewLine}Encounter #{Encounter}{Environment.NewLine}Target Rate: {Rate:0.00}%" : "Unwanted match..";
         string MarkString = "";
         string EmojiMark = MarkEmoji(pk, out MarkString);
         Span<int> _ivs = stackalloc int[6];
