@@ -259,8 +259,6 @@ namespace PokeViewer.NET.SubForms
                     }
                     button1_Click(sender, e);
                     return;
-                    /*EnableOptions();
-                    MessageBox.Show(this, ex.ToString());*/
                 }
             }
 
@@ -616,7 +614,7 @@ ReSave:
                     if (staticfound)
                     {
                         if (!match)
-                            WebHookUtil.SendDetailNotifications(pk, sprite, false, TrainerInfo);
+                            WebHookUtil.SendDetailNotifications(pk, sprite, false, TrainerInfo, true, encountercount, (1.00 - Math.Pow(1.00 - Rate, encountercount)) * 100.00);
                         break;
                     }
                 }

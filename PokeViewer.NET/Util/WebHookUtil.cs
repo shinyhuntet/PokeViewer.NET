@@ -63,7 +63,7 @@ public static class WebHookUtil
         return WebHook;
     }
 
-    public static async void SendDetailNotifications(PKM pk, string thumbnail, bool pinguser, SimpleTrainerInfo trainerInfo)
+    public static async void SendDetailNotifications(PKM pk, string thumbnail, bool pinguser, SimpleTrainerInfo trainerInfo, bool isStaic = false, int Encounter = 0, double Rate = 0)
     {
         if (pk == null || !pk.Valid || pk.Species <= 0 || pk.Species > (ushort)Species.MAX_COUNT || string.IsNullOrEmpty(Settings.Default.WebHook))
             return;
@@ -72,7 +72,7 @@ public static class WebHookUtil
             return;
         try
         {
-            var webhook = GenerateWebHookDetail(pk, thumbnail, pinguser, trainerInfo);
+            var webhook = GenerateWebHookDetail(pk, thumbnail, pinguser, trainerInfo, isStaic, Encounter, Rate);
             var content = new StringContent(JsonConvert.SerializeObject(webhook), Encoding.UTF8, "application/json");
             foreach (var url in DiscordWebhooks)
                 await Client.PostAsync(url, content).ConfigureAwait(false);
@@ -84,11 +84,11 @@ public static class WebHookUtil
         }
     }
     
-    private static object GenerateWebHookDetail(PKM pk, string thumbnail, bool pinguser, SimpleTrainerInfo trainerInfo)
+    private static object GenerateWebHookDetail(PKM pk, string thumbnail, bool pinguser, SimpleTrainerInfo trainerInfo, bool isStaic = false, int Encounter = 0, double Rate = 0)
     {
         GameStrings Strings = GameInfo.GetStrings("en");
         string userContent = pinguser ? $"<@{Settings.Default.UserDiscordID}>\n{Settings.Default.PingMessage}" : "";
-        string title = pinguser ? $"Match Found!" : "Unwanted match..";
+        string title = pinguser ? $"Match Found!" : isStaic ? $"Static Pokemon Found!{Environment.NewLine}Encounter #{Encounter}, Target Rate: {Rate:0.00}" : "Unwanted match..";
         string MarkString = "";
         string EmojiMark = MarkEmoji(pk, out MarkString);
         Span<int> _ivs = stackalloc int[6];
