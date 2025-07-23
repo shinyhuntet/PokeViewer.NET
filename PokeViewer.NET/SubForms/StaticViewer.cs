@@ -971,11 +971,13 @@ ReSave:
             var data = await Executor.SwitchConnection.ReadBytesMainAsync(Offsets.IsInBattle, 1, token).ConfigureAwait(false);
             return data[0] != 0x06;
         }
+
         private async Task DefeatPokemon(CancellationToken token)
         {
-            while (await IsInBattle(token).ConfigureAwait(false))
+            while (await IsInBattle(token).ConfigureAwait(false) || await IsInBattleState(OverworldOffset, token).ConfigureAwait(false))
                 await Click(A, 0_800, token).ConfigureAwait(false);
         }
+
         private async Task ToGameOverworld(ulong OverworldOffset, CancellationToken token)
         {
             while (!await IsOnOverworld(OverworldOffset, token).ConfigureAwait(false))
@@ -1407,6 +1409,12 @@ ReSave:
 
             var data = await Executor.SwitchConnection.ReadBytesAbsoluteAsync(offset, 1, token).ConfigureAwait(false);
             return data[0] == 0x11;
+        }
+        
+        private async Task<bool> IsInBattleState(ulong offset, CancellationToken token)
+        {
+            var data = await SwitchConnection.ReadBytesAbsoluteAsync(offset, 1, token).ConfigureAwait(false);
+            return data[0] == 0x06;
         }
 
         private async Task<bool> ReadEncryptedBlockBool(DataBlock block, CancellationToken token)
