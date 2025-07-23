@@ -469,7 +469,7 @@ namespace PokeViewer.NET.SubForms
             float coordz = Single.Parse(ZCoord.Text, NumberStyles.Float);
             var TeleportCoords = (coordx, coordy, coordz).ToTuple();
                         
-            await DefeatPokemon(token).ConfigureAwait(false);
+            await RecoverToOverworld(token).ConfigureAwait(false);
             var PlayerCoords = (await PlayerCoordRead(token).ConfigureAwait(false)).ToTuple();
             if (Math.Abs(TeleportCoords.Item1 - PlayerCoords.Item1) > 5 || Math.Abs(TeleportCoords.Item2 - PlayerCoords.Item2) > 5 || Math.Abs(TeleportCoords.Item3 - PlayerCoords.Item3) > 5)
             {
@@ -538,17 +538,15 @@ namespace PokeViewer.NET.SubForms
 ReSave:
                     if(!CoordCheck.Checked)
                         await GotoAcurateCoord(token).ConfigureAwait(false);
-                    else
-                     {
-                        await DefeatPokemon(token).ConfigureAwait(false);
-                        await ToGameOverworld(token).ConfigureAwait(false);
-                     }
+                    else                     
+                        await RecoverToOverworld(token).ConfigureAwait(false);
+                     
                     await SVSaveGameOverworldStatic(token).ConfigureAwait(false);
                     (LastSaveInit, var LastSaved, DateTime CurDate) = await GetLastSaveTime(LastSaveInit, token).ConfigureAwait(false);
                     LastSavedBox.Text = $"{CurDate}";
                     if (LastSaved == PreviousSaved)
                     {
-                        await ToGameOverworld(token).ConfigureAwait(false);
+                        await RecoverToOverworld(token).ConfigureAwait(false);
                         goto ReSave;
                     }
                 }
@@ -974,17 +972,23 @@ ReSave:
 
         private async Task DefeatPokemon(CancellationToken token)
         {
-            while (await IsInBattle(token).ConfigureAwait(false) || await IsInBattleState(OverworldOffset, token).ConfigureAwait(false))
+            while (await IsInBattle(token).ConfigureAwait(false))
                 await Click(A, 0_800, token).ConfigureAwait(false);
         }
 
-        private async Task ToGameOverworld(ulong OverworldOffset, CancellationToken token)
+        private async Task RecoverToOverworld(CancellationToken token)
         {
+            if (!Executor.SwitchConnection.Connected)
+                Executor.SwitchConnection.Reset();
+            
             while (!await IsOnOverworld(OverworldOffset, token).ConfigureAwait(false))
+            {
+                if (await IsInBattle(token).ConfigureAwait(false))
+                    await DefeatPokemon(token).ConfigureAwait(false);
                 await Click(B, 0_500, token).ConfigureAwait(false);
-
-            await Task.Delay(1_000, token).ConfigureAwait(false);
+            }
         }
+        
         public async Task CloseGame(CancellationToken token)
         {
             // Close out of the game
@@ -1410,13 +1414,7 @@ ReSave:
             var data = await Executor.SwitchConnection.ReadBytesAbsoluteAsync(offset, 1, token).ConfigureAwait(false);
             return data[0] == 0x11;
         }
-        
-        private async Task<bool> IsInBattleState(ulong offset, CancellationToken token)
-        {
-            var data = await SwitchConnection.ReadBytesAbsoluteAsync(offset, 1, token).ConfigureAwait(false);
-            return data[0] == 0x06;
-        }
-
+                
         private async Task<bool> ReadEncryptedBlockBool(DataBlock block, CancellationToken token)
         {
             var address = await SearchSaveKey(block.Key, token).ConfigureAwait(false);

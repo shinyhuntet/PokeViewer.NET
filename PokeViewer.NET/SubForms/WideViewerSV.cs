@@ -1806,8 +1806,7 @@ ReSave:
             while (await IsInBattle(token).ConfigureAwait(false))
             {
                 FleeFailCount++;
-                for (int i = 0; i < 3; i++)
-                    await Click(B, 0_500, token).ConfigureAwait(false);
+                await Flee(token).ConfigureAwait(false);
                 if (!await IsInBattle(token).ConfigureAwait(false))
                     break;
                 if (FleeFailCount >= 5)
@@ -1816,8 +1815,6 @@ ReSave:
                     FleeFailCount = 0;
                     break;
                 }
-                await Click(DUP, 0_500, token).ConfigureAwait(false);
-                await Click(A, 2_500, token).ConfigureAwait(false);
             }
             return true;
         }
@@ -1828,6 +1825,7 @@ ReSave:
             await Click(DUP, 0_500, token).ConfigureAwait(false);
             await Click(A, 2_500, token).ConfigureAwait(false);
         }
+        
         private async Task<bool> IsInBattle(CancellationToken token)
         {
             RefreshConnection();
