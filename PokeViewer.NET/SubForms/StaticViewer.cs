@@ -31,6 +31,7 @@ namespace PokeViewer.NET.SubForms
         private static ulong BaseBlockKeyPointer = 0;
         public ulong PlayerOnMountOffset = 0;
         public ulong PlayerCanMoveOffset = 0;
+        private ulong OverworldOffset = 0;
         private readonly Egg_Viewer eggviewer;
         private CancellationTokenSource? cts = null;
         private GameStrings Strings = GameInfo.GetStrings("en");
@@ -729,6 +730,7 @@ ReSave:
             
             BaseBlockKeyPointer = await Executor.SwitchConnection.PointerAll(Offsets.BlockKeyPointer, token).ConfigureAwait(false);
             PlayerOnMountOffset = await Executor.SwitchConnection.PointerAll(Offsets.PlayerOnMountPointer, token).ConfigureAwait(false);
+            OverworldOffset = await Executor.SwitchConnection.PointerAll(Offsets.OverworldPointer, token).ConfigureAwait(false);
             return;
         }
 
@@ -967,16 +969,15 @@ ReSave:
                 Executor.SwitchConnection.Reset();
 
             var data = await Executor.SwitchConnection.ReadBytesMainAsync(Offsets.IsInBattle, 1, token).ConfigureAwait(false);
-            return data[0] <= 0x05;
+            return data[0] != 0x06;
         }
         private async Task DefeatPokemon(CancellationToken token)
         {
             while (await IsInBattle(token).ConfigureAwait(false))
                 await Click(A, 0_800, token).ConfigureAwait(false);
         }
-        private async Task ToGameOverworld(CancellationToken token)
+        private async Task ToGameOverworld(ulong OverworldOffset, CancellationToken token)
         {
-            ulong OverworldOffset = await Executor.SwitchConnection.PointerAll(Offsets.OverworldPointer, token).ConfigureAwait(false);
             while (!await IsOnOverworld(OverworldOffset, token).ConfigureAwait(false))
                 await Click(B, 0_500, token).ConfigureAwait(false);
 
