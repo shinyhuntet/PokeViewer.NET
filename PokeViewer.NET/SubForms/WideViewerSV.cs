@@ -88,6 +88,9 @@ namespace PokeViewer.NET.SubForms
         private byte TargetForm = 0;
         private readonly long DateCycle = (long)TimeSpan.FromMinutes(72).TotalSeconds;
         private readonly SimpleTrainerInfo TrainerInfo;
+        private bool CollideTaskComplete = false;
+        private bool CollideTaskRunning = false;
+        private bool OverworldTaskRunning = false;
 
         public void LoadOutbreakCache()
         {
@@ -687,67 +690,71 @@ namespace PokeViewer.NET.SubForms
         private async Task Collide(CancellationToken token)
         {
             var CheckCount = 0;
-            var DangerCount = 0;
+            while(OverworldTaskRunning)
+                await Task.Delay(1_000, token).ConfigureAwait(false);
+            
             if (await PlayerNotOnMount(token).ConfigureAwait(false))
                 await Click(PLUS, 0_800, token).ConfigureAwait(false);
             while (await PlayerNotOnMount(token).ConfigureAwait(false))
             {
+                
+                while(OverworldTaskRunning)
+                    await Task.Delay(1_000, token).ConfigureAwait(false);
                 await Click(PLUS, 0_800, token).ConfigureAwait(false);
                 CheckCount++;
                 if (!await PlayerNotOnMount(token).ConfigureAwait(false))
                     break;
-                if (await IsInBattle(token).ConfigureAwait(false))
-                {
-                    await FleeToOverworldOnly(token).ConfigureAwait(false);
-                    CheckCount = 0;
-                    continue;
-                }
-                if (DangerCount >= 3)
-                {
-                    var success = await SetUpItems((MoveType)poketype.SelectedIndex, token).ConfigureAwait(false);
-                    if (!success)
-                    {
-                        await Click(HOME, 1_000, token).ConfigureAwait(false);
-                        cts!.Cancel();
-                    }
-                    else
-                    {
-                        throw new Exception("Can't Collide!");
-                    }
-
-                }
+                
                 if (CheckCount >= 1)
                     await RefreshOnMountOffset(token).ConfigureAwait(false);
-                if (CheckCount >= 2)
+                while(OverworldTaskRunning)
+                    await Task.Delay(1_000, token).ConfigureAwait(false);
+                if (CheckCount >= 2 && CheckCount < 4)
                 {
+                    CollideTaskRunning = true;
                     await ClosePicnic(token).ConfigureAwait(false);
-                    DangerCount++;
+                    CollideTaskRunning = false;
                 }
+                while(OverworldTaskRunning)
+                    await Task.Delay(1_000, token).ConfigureAwait(false);
                 if (CheckCount >= 4 && !await OverworldStateChanged(token).ConfigureAwait(false))
                 {
+                    CollideTaskRunning = true;
                     await RemoveEmotes(token).ConfigureAwait(false);
-                    await ToOverworld(token).ConfigureAwait(false);
+                    CollideTaskRunning = false;
                     CheckCount = 0;
                 }
             }
-            FleeFailCount = 0;
+            CollideTaskRunning = false;
         }
-
+        static Object lockObj = new Object();
         private async Task RecoverToOverworld(CancellationToken token)
         {
-            if (!Executor.SwitchConnection.Connected)
-                Executor.SwitchConnection.Reset();
-            while(true)
+            lock(lockObj)
             {
+                if (!Executor.SwitchConnection.Connected)
+                    Executor.SwitchConnection.Reset();
+            }
+
+            while(!token.IsCancellationRequested)
+            {
+                while(CollideTaskRunning)
+                    await Task.Delay(1_000, token).ConfigureAwait(false);
+
                 if (!await IsOnOverworld(OverWorldOffset, token).ConfigureAwait(false))
                 {
+                    while(CollideTaskRunning)
+                        await Task.Delay(1_000, token).ConfigureAwait(false);
+                    OverworldTaskRunning = true;
                     if (await IsInBattle(token).ConfigureAwait(false))
                     {
                         await DefeatPokemon(token).ConfigureAwait(false);
                     }
                     await Click(B, 0_500, token).ConfigureAwait(false);
                 }
-                return;
+                OverworldTaskRunning = false;
+                if(CollideTaskComplete)
+                    return;
             }
         }
 
@@ -3232,6 +3239,8 @@ recalc:
         }
         public void RefreshConnection()
         {
+            lock(lockObj)
+            {
             if (!Executor.SwitchConnection.Connected ||!Executor.Connection.Connected)
             {
                 Executor.SwitchConnection.Reset();
@@ -3240,6 +3249,7 @@ recalc:
                 if (!Executor.Connection.Connected)
                     msg += $"{Environment.NewLine}Connection issue: Executor.Connection is not Connected!";
                 ConnectionBox.Text = $"{msg}";
+            }
             }
         }
         public void DisableOptions()
