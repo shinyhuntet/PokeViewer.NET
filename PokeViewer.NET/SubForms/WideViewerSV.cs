@@ -1,4 +1,4 @@
-﻿using PKHeX.Core;
+using PKHeX.Core;
 using static PokeViewer.NET.RoutineExecutor;
 using static PokeViewer.NET.ViewerUtil;
 using static System.Buffers.Binary.BinaryPrimitives;
@@ -732,6 +732,25 @@ namespace PokeViewer.NET.SubForms
             }
             FleeFailCount = 0;
         }
+
+        private async Task RecoverToOverworld(CancellationToken token)
+        {
+            if (!Executor.SwitchConnection.Connected)
+                Executor.SwitchConnection.Reset();
+            while(true)
+            {
+                if (!await IsOnOverworld(OverWorldOffset, token).ConfigureAwait(false))
+                {
+                    if (await IsInBattle(token).ConfigureAwait(false))
+                    {
+                        await DefeatPokemon(token).ConfigureAwait(false);
+                    }
+                    await Click(B, 0_500, token).ConfigureAwait(false);
+                }
+                return;
+            }
+        }
+
         private async Task RemoveEmotes(CancellationToken token)
         {
             await SetStick(SwitchStick.LEFT, 0, 10000, 0_050, token).ConfigureAwait(false);
