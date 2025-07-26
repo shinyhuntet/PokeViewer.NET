@@ -7,11 +7,6 @@ using static PokeViewer.NET.SubForms.Egg_Viewer;
 using SysBot.Base;
 using System.Globalization;
 using static PokeViewer.NET.SubForms.MiscViewer;
-using System.Text;
-using System.Security.Principal;
-using System.Windows.Forms;
-using System.DirectoryServices.ActiveDirectory;
-using System.Threading.Tasks.Dataflow;
 using PKHeX.Drawing;
 using PKHeX.Drawing.PokeSprite;
 using System.ComponentModel;
@@ -53,6 +48,7 @@ namespace PokeViewer.NET.SubForms
         private ushort TargetMon = 0;
         private byte TargetForm = 0;
         private readonly SimpleTrainerInfo TrainerInfo;
+        
         public StaticViewer(int Gametype, ref ViewerState executor, (Color, Color) color, SimpleTrainerInfo trainerInfo)
         {
             InitializeComponent();
@@ -985,7 +981,8 @@ ReSave:
             {
                 if (await IsInBattle(token).ConfigureAwait(false))
                     await DefeatPokemon(token).ConfigureAwait(false);
-                await Click(B, 0_500, token).ConfigureAwait(false);
+                else
+                    await Click(B, 0_500, token).ConfigureAwait(false);
             }
         }
         
