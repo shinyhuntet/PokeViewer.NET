@@ -3006,6 +3006,11 @@ recalc:
             await Task.Delay(0_500, token).ConfigureAwait(false);
             for (int i = 0; i < 3; i++)
                 await Click(Y, 0_500, token).ConfigureAwait(false);
+            if(!await IsOnOverworld(OverWorldOffset, token).ConfigureAwait(false))
+            {
+                CollideTaskRunning = false;
+                return;
+            }
             CollideTaskRunning = false;
             while (OverworldTaskRunning)                           
                 await Task.Delay(1_000, token).ConfigureAwait(false);        
