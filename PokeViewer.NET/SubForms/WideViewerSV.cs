@@ -1412,8 +1412,7 @@ namespace PokeViewer.NET.SubForms
                             await SetStick(SwitchStick.LEFT, 0, 0, 100, token).ConfigureAwait(false);
                         });
                         ResetTaskStatus();
-                        await Task.WhenAll(ScanTask, RecoverToOverworld(token)).ConfigureAwait(false);
-                        await Task.Delay(0_500).ConfigureAwait(false);
+                        await Task.WhenAll(ScanTask, RecoverToOverworld(token)).ConfigureAwait(false);                        
                     }
                     else if (!initialize && !NonSaveMode.Checked)
                     {
