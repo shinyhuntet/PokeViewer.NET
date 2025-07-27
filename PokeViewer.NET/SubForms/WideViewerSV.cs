@@ -1392,7 +1392,6 @@ namespace PokeViewer.NET.SubForms
                         ResetTaskStatus();
                         Task PicnicClose = Task.Run(async () => { await ClosePicnic(token).ConfigureAwait(false); CollideTaskComplete = true; });
                         await Task.WhenAll(PicnicClose, RecoverToOverworld(token)).ConfigureAwait(false);
-                        await Task.Delay(0_500).ConfigureAwait(false);
                     }
                     else if (!NonSaveMode.Checked && !initialize && !TeleportMode.Checked)
                     {
