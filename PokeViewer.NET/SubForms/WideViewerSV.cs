@@ -18,6 +18,7 @@ using TimesReroll = PokeViewer.NET.Misc.Pokemon_Enums.TimesReroll;
 using Newtonsoft.Json;
 using PokeViewer.NET.Properties;
 using PokeViewer.NET.Util;
+using NLog.Time;
 
 namespace PokeViewer.NET.SubForms
 {
@@ -455,10 +456,6 @@ namespace PokeViewer.NET.SubForms
                                 Reset.Checked = true;
                                 EatOnStart.Checked = true;
                             }));
-                            /*await InitilizeSessionOffsets(token).ConfigureAwait(false);
-                            await ToOverworld(token).ConfigureAwait(false);
-                            await FleeToOverworld(token).ConfigureAwait(false);
-                            await ClosePicnic(token).ConfigureAwait(false);*/
                         }
                         catch (SocketException err)
                         {
@@ -708,18 +705,22 @@ namespace PokeViewer.NET.SubForms
         private async Task CollideRead(CancellationToken token)
         {
             await Collide(token).ConfigureAwait(false);
+            CollideTaskRunning = true;
             while (OverworldTaskRunning)
                 await Task.Delay(1_000, token).ConfigureAwait(false);
-            CollideTaskRunning = true;
             var coords = await Executor.SwitchConnection.PointerPeek(12, Offsets.CollisionPointer, token).ConfigureAwait(false);
             CollideTaskRunning =false;
             XCoord.Text = $"{BitConverter.ToSingle(coords.AsSpan()[..4])}";
             YCoord.Text = $"{BitConverter.ToSingle(coords.AsSpan()[4..8])}";
             ZCoord.Text = $"{BitConverter.ToSingle(coords.AsSpan()[8..12])}";
-            while (OverworldTaskRunning)
-                await Task.Delay(1_000, token).ConfigureAwait(false);
             if (PicnicReset.Checked)
+            {
+                CollideTaskRunning = true;
+                while (OverworldTaskRunning)
+                    await Task.Delay(1_000, token).ConfigureAwait(false);
                 await Click(PLUS, 0_800, token).ConfigureAwait(false);
+                CollideTaskRunning = false;
+            }
             if (checkBox6.Checked)
                 checkBox6.Checked =false;
         }
@@ -739,36 +740,45 @@ namespace PokeViewer.NET.SubForms
             while (await PlayerNotOnMount(token).ConfigureAwait(false))
             {
                 CheckCount++;
+                while (OverworldTaskRunning)
+                    await Task.Delay(1_000, token).ConfigureAwait(false);
+                await Click(PLUS, 0_800, token).ConfigureAwait(false); 
                 if (!await PlayerNotOnMount(token).ConfigureAwait(false))
                     break;
                 CollideTaskRunning = false;
                 while (OverworldTaskRunning)
                     await Task.Delay(1_000, token).ConfigureAwait(false);
 
-                CollideTaskRunning = true;
                 if (CheckCount >= 1)
                 {
+                    CollideTaskRunning = true;
                     await RefreshOnMountOffset(token).ConfigureAwait(false);
                     CollideTaskRunning = false;
+                    while (OverworldTaskRunning)
+                        await Task.Delay(1_000, token).ConfigureAwait(false);
                 }
-                while(OverworldTaskRunning)
-                    await Task.Delay(1_000, token).ConfigureAwait(false);
                 if (CheckCount >= 2 && CheckCount < 4)
                 {
                     await ClosePicnic(token).ConfigureAwait(false);
+                    while (OverworldTaskRunning)
+                        await Task.Delay(1_000, token).ConfigureAwait(false);
                 }
-                while(OverworldTaskRunning)
-                    await Task.Delay(1_000, token).ConfigureAwait(false);
                 if (CheckCount >= 4 && !await OverworldStateChanged(token).ConfigureAwait(false))
                 {
+                    CollideTaskRunning = true;
                     await RemoveEmotes(token).ConfigureAwait(false);
                     CollideTaskRunning = false;
+                    while (OverworldTaskRunning)
+                        await Task.Delay(1_000, token).ConfigureAwait(false);
                     CheckCount = 0;
                 }
+                CollideTaskRunning = true;
             }
             CollideTaskRunning = false;
         }
+        
         static Object lockObj = new Object();
+        
         private async Task RecoverToOverworld(CancellationToken token)
         {
             lock(lockObj)
@@ -785,29 +795,16 @@ namespace PokeViewer.NET.SubForms
                 OverworldTaskRunning = true;
                 while (!await IsOnOverworld(OverWorldOffset, token).ConfigureAwait(false))
                 {
-                    OverworldTaskRunning = false;
-                    while (CollideTaskRunning)                    
-                        await Task.Delay(1_000, token).ConfigureAwait(false);
-                    
-                    OverworldTaskRunning = true;
-                    if(await IsOnOverworld(OverWorldOffset, token).ConfigureAwait(false))
-                        break;
                     FleeFailCount++;
                     if (await IsInBattle(token).ConfigureAwait(false))
                     {
-                        if(FleeFailCount >= 5 || TeleportMode.Checked)
+                        if (FleeFailCount >= 5 || TeleportMode.Checked)
                             await DefeatPokemon(token).ConfigureAwait(false);
                         else
                             await Flee(token).ConfigureAwait(false);
                     }
                     else
-                        await Click(B, 0_800, token).ConfigureAwait(false);
-                    OverworldTaskRunning = false;
-                    while (CollideTaskRunning)
-                        await Task.Delay(1_000, token).ConfigureAwait(false);
-                    OverworldTaskRunning = true;
-                    if (await IsOnOverworld(OverWorldOffset, token).ConfigureAwait(false))
-                        break;
+                        await Click(B, 1_000, token).ConfigureAwait(false);
                 }
                 OverworldTaskRunning = false;
                 if(CollideTaskComplete)
@@ -854,14 +851,15 @@ namespace PokeViewer.NET.SubForms
                         break;
                     CollideTaskRunning = false;
                     CheckCount++;
+                    while (OverworldTaskRunning)
+                        await Task.Delay(1_000, token).ConfigureAwait(false);
                     if (CheckCount >= 2)
                     {
-                        while (OverworldTaskRunning)
-                            await Task.Delay(1_000, token).ConfigureAwait(false);
                         CollideTaskRunning = true;
                         await RefreshOnMountOffset(token).ConfigureAwait(false);
-                        CollideTaskRunning = false;
+                        CollideTaskRunning = false;                        
                     }
+                    CollideTaskRunning = true;
                 }
                 CollideTaskRunning = false;
             }
@@ -890,21 +888,24 @@ namespace PokeViewer.NET.SubForms
                 CollideTaskRunning = false;
                 while (OverworldTaskRunning)
                     await Task.Delay(1_000, token).ConfigureAwait(false);
-                CollideTaskRunning = true;
                 if (CheckCount >= 1)
+                {
+                    CollideTaskRunning = true;
                     await RefreshOnMountOffset(token).ConfigureAwait(false);
-                CollideTaskRunning = false;
+                    CollideTaskRunning = false;                    
+                }
                 if (CheckCount >= 3)
                     break;
+                CollideTaskRunning = true;
             }
             CollideTaskRunning = false;
         }
         private async Task CollideReadPro(CancellationToken token)
         {
             await Collide(token).ConfigureAwait(false);
+            CollideTaskRunning = true;
             while (OverworldTaskRunning)
                 await Task.Delay(1_000, token).ConfigureAwait(false);
-            CollideTaskRunning = true;
             var coords = await Executor.SwitchConnection.PointerPeek(12, Offsets.CollisionPointer, token).ConfigureAwait(false);
             CollideTaskRunning = false;
             coordx = $"{BitConverter.ToSingle(coords.AsSpan()[..4])}";
@@ -936,12 +937,14 @@ namespace PokeViewer.NET.SubForms
                 y += 80;
             WriteSingleLittleEndian(X1.AsSpan()[4..], y);
 
+            CollideTaskRunning = true;
             while (OverworldTaskRunning)
                 await Task.Delay(1_000, token).ConfigureAwait(false);
-            CollideTaskRunning = true;
             for (int i = 0; i < 15; i++)
                 await Executor.SwitchConnection.PointerPoke(X1, Offsets.CollisionPointer, token).ConfigureAwait(false);
             CollideTaskRunning = false;
+            while (OverworldTaskRunning)
+                await Task.Delay(1_000, token).ConfigureAwait(false);
             if (outbreakmode)
             {
                 await Task.Delay(3_000).ConfigureAwait(false);
@@ -950,9 +953,13 @@ namespace PokeViewer.NET.SubForms
                 CollideTaskRunning = true;
                 await Click(B, 19_000, token).ConfigureAwait(false);
                 CollideTaskRunning = false;
+                while (OverworldTaskRunning)
+                    await Task.Delay(1_000, token).ConfigureAwait(false);
             }
 
-            await Task.Delay(6_000, token).ConfigureAwait(false);
+            CollideTaskRunning = true;
+            await Task.Delay(5_500, token).ConfigureAwait(false);
+            CollideTaskRunning = false;
             await DisCollide(token).ConfigureAwait(false);
             if (checkBox7.Checked)
                 checkBox7.Checked = false;
@@ -1000,8 +1007,10 @@ namespace PokeViewer.NET.SubForms
                 await CollideToSpot(x, Y, z, token).ConfigureAwait(false);
                 await DisCollideOnly(token).ConfigureAwait(false);
                 await Reposition(token).ConfigureAwait(false);
+                CollideTaskRunning = true;
                 await Task.Delay(1_000, token).ConfigureAwait(false);
                 await PrepareToPicnic(x, Y, z, token).ConfigureAwait(false);
+                return;
             }
             CollideTaskComplete = true;
         }
@@ -1023,25 +1032,27 @@ namespace PokeViewer.NET.SubForms
                 y += 20;
                 WriteSingleLittleEndian(X1.AsSpan()[4..], y);
 
+                CollideTaskRunning = true;
                 while (OverworldTaskRunning)
                     await Task.Delay(1_000, token).ConfigureAwait(false);
-                CollideTaskRunning = true;
                 for (int i = 0; i < 15; i++)
                     await Executor.SwitchConnection.PointerPoke(X1, Offsets.CollisionPointer, token).ConfigureAwait(false);
                 var PlayerCoords = (await PlayerCoordRead(token).ConfigureAwait(false)).ToTuple();
                 CollideTaskRunning = false;
                 while (Math.Abs(TeleportCoords.Item1 - PlayerCoords.Item1) > 5 || Math.Abs(TeleportCoords.Item2 - PlayerCoords.Item2) > 5 || Math.Abs(TeleportCoords.Item3 - PlayerCoords.Item3) > 5)
                 {
+                    CollideTaskRunning = true;
                     await Task.Delay(0_500, token).ConfigureAwait(false);
                     while (OverworldTaskRunning)
                         await Task.Delay(1_000, token).ConfigureAwait(false);
-                    CollideTaskRunning = true;
                     for (int i = 0; i < 15; i++)
                         await Executor.SwitchConnection.PointerPoke(X1, Offsets.CollisionPointer, token).ConfigureAwait(false);
                     PlayerCoords = (await PlayerCoordRead(token).ConfigureAwait(false)).ToTuple();
                     CollideTaskRunning = false;
                 }
+                CollideTaskRunning = true;
                 await Task.Delay(!TeleportMode.Checked ? 3_500 : 5_000, token).ConfigureAwait(false);
+                CollideTaskRunning = false;
             }
             else
             {
@@ -1923,11 +1934,17 @@ ReSave:
                 CollideTaskRunning = false;
                 await CollideToSpot(XCoord.Text, YCoord.Text, ZCoord.Text, token).ConfigureAwait(false);
                 if (PicnicReset.Checked)
+                {
                     await DisCollideOnly(token).ConfigureAwait(false);
+                }
                 if (!TeleportMode.Checked)
+                {
                     await Reposition(token).ConfigureAwait(false);
-                await Task.Delay(2_000, token).ConfigureAwait(false);
+                }
+                CollideTaskRunning = true;
+                await Task.Delay(1_000, token).ConfigureAwait(false);
                 await PrepareSave(TargetCoords, token).ConfigureAwait(false);
+                return;
             }
             CollideTaskComplete = true;
         }
@@ -2925,17 +2942,18 @@ recalc:
 
         private async Task Reposition(CancellationToken token)
         {
-            await Click(Y, 1_000, token).ConfigureAwait(false);
             CollideTaskRunning = true;
             while (OverworldTaskRunning)
                 await Task.Delay(1_000, token).ConfigureAwait(false);
+            await Click(Y, 1_000, token).ConfigureAwait(false);
             if (await IsOnOverworld(OverWorldOffset, token).ConfigureAwait(false))
-                await Click(Y, 1_000, token).ConfigureAwait(false);
-            await ToOverworld(token).ConfigureAwait(false);
+                await Click(Y, 0_500, token).ConfigureAwait(false);
+            //await ToOverworld(token).ConfigureAwait(false);
             CollideTaskRunning = false;
-            while (OverworldTaskRunning)
-                await Task.Delay(0_500, token).ConfigureAwait(false);
+            await Task.Delay(1_000, token).ConfigureAwait(false);
             CollideTaskRunning = true;
+            while (OverworldTaskRunning)
+                await Task.Delay(1_000, token).ConfigureAwait(false);
             await Click(L, 1_000, token).ConfigureAwait(false);
             CollideTaskRunning = false;
         }
@@ -2990,18 +3008,23 @@ recalc:
                 await Click(MINUS, 2_000, token).ConfigureAwait(false);
             if (!await IsOnOverworld(OverWorldOffset, token).ConfigureAwait(false))
             {
-                await Reposition(token).ConfigureAwait(false);
+                ResetTaskStatus();
+                Task Reposite = Task.Run(async () =>
+                {
+                    await Reposition(token).ConfigureAwait(false);
+                    CollideTaskComplete = true;                    
+                });
+                await Task.WhenAll(Reposite, RecoverToOverworld(token)).ConfigureAwait(false);
                 await OpenPicnic(token).ConfigureAwait(false);
             }
 
         }
         private async Task ClosePicnic(CancellationToken token)
         {
-            CollideTaskRunning = true;
+            CollideTaskRunning = true;            
+            await Task.Delay(0_500, token).ConfigureAwait(false);
             while (OverworldTaskRunning)
                 await Task.Delay(1_000, token).ConfigureAwait(false);
-
-            await Task.Delay(0_500, token).ConfigureAwait(false);
             for (int i = 0; i < 3; i++)
                 await Click(Y, 0_500, token).ConfigureAwait(false);
             if(!await IsOnOverworld(OverWorldOffset, token).ConfigureAwait(false))
