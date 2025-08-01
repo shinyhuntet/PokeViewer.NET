@@ -418,7 +418,7 @@ namespace PokeViewer.NET.SubForms
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show(this, ex.ToString(), "Exception!");
+                    //MessageBox.Show(this, ex.ToString(), "Exception!");
                     ConnectionBox.Text = $"Switch Connection Connected: {Executor.SwitchConnection.Connected}{Environment.NewLine}Console Connection Connected: {Executor.Connection.Connected} ";
                     if (Executor.SwitchConnection.Connected)
                     {
