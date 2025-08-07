@@ -269,10 +269,10 @@ namespace PokeViewer.NET.SubForms
         }
         private async Task SVSaveGameOverworldStatic(CancellationToken token)
         {
-            await Click(X, !CoordCheck.Checked ? 3_000 : 1_500, token).ConfigureAwait(false);
+            await Click(X, !CoordCheck.Checked ? 2_500 : 1_500, token).ConfigureAwait(false);
             for(int i = 0; i < 3; i++)
                 await Click(R, 0_500, token).ConfigureAwait(false);
-            await Click(A, 3_500, token).ConfigureAwait(false);
+            await Click(A, 2_500, token).ConfigureAwait(false);
         }
         private async Task<(ulong, ulong, DateTime)> GetLastSaveTime(ulong init, CancellationToken token)
         {
@@ -334,9 +334,14 @@ namespace PokeViewer.NET.SubForms
             CollideTaskRunning = true;
             while (await PlayerNotOnMount(token).ConfigureAwait(false))
             {
+                CollideTaskRunning = false;
                 CheckCount++;
+                await Task.Delay(1_000, token).ConfigureAwait(false);
+                CollideTaskRunning = true;
                 while (OverworldTaskRunning)
                     await Task.Delay(1_000, token).ConfigureAwait(false);
+                if (!await PlayerNotOnMount(token).ConfigureAwait(false))
+                    break;
                 await Click(PLUS, 0_800, token).ConfigureAwait(false);
                 if (!await PlayerNotOnMount(token).ConfigureAwait(false))
                     break;
@@ -490,20 +495,22 @@ namespace PokeViewer.NET.SubForms
                     await Task.Delay(1_000, token).ConfigureAwait(false);
                 for (int i = 0; i < 15; i++)
                     await Executor.SwitchConnection.PointerPoke(X1, Offsets.CollisionPointer, token).ConfigureAwait(false);
+                CollideTaskRunning = false;
                 var PlayerCoords = (await PlayerCoordRead(token).ConfigureAwait(false)).ToTuple();
                 
                 while (Math.Abs(TeleportCoords.Item1 - PlayerCoords.Item1) > 5 || Math.Abs(TeleportCoords.Item2 - PlayerCoords.Item2) > 5 || Math.Abs(TeleportCoords.Item3 - PlayerCoords.Item3) > 5)
                 {
+                    await Task.Delay(1_000, token).ConfigureAwait(false);
                     CollideTaskRunning = true;
-                    await Task.Delay(0_500, token).ConfigureAwait(false);
                     while (OverworldTaskRunning)
                         await Task.Delay(1_000, token).ConfigureAwait(false);
                     for (int i = 0; i < 15; i++)
                         await Executor.SwitchConnection.PointerPoke(X1, Offsets.CollisionPointer, token).ConfigureAwait(false);
+                    CollideTaskRunning = false;
                     PlayerCoords = (await PlayerCoordRead(token).ConfigureAwait(false)).ToTuple();                    
                 }
                 CollideTaskRunning = true;
-                await Task.Delay(CoordNum.Value <= 10 ? 3_500 + (int)DelayNum.Value : 2_500 + (int)DelayNum.Value, token).ConfigureAwait(false);
+                await Task.Delay(CoordNum.Value <= 10 ? 2_000 + (int)DelayNum.Value : 1_000 + (int)DelayNum.Value, token).ConfigureAwait(false);
                 CollideTaskRunning = false;
             }
             else
@@ -529,16 +536,11 @@ namespace PokeViewer.NET.SubForms
             float coordy = Single.Parse(YCoord.Text, NumberStyles.Float);
             float coordz = Single.Parse(ZCoord.Text, NumberStyles.Float);
             var TeleportCoords = (coordx, coordy, coordz).ToTuple();
-            CollideTaskRunning = true;
-            while (OverworldTaskRunning)
-                await Task.Delay(1_000, token).ConfigureAwait(false);
             
             var PlayerCoords = (await PlayerCoordRead(token).ConfigureAwait(false)).ToTuple();
-            CollideTaskRunning = false;
             if (Math.Abs(TeleportCoords.Item1 - PlayerCoords.Item1) > 5 || Math.Abs(TeleportCoords.Item2 - PlayerCoords.Item2) > 5 || Math.Abs(TeleportCoords.Item3 - PlayerCoords.Item3) > 5)
             {
-                CollideTaskRunning = true;
-                await Task.Delay(0_500, token).ConfigureAwait(false);
+                await Task.Delay(1_000, token).ConfigureAwait(false);
                 await CollideToSpot(XCoord.Text, YCoord.Text, ZCoord.Text, token).ConfigureAwait(false);
                 await GotoAcurateCoord(token).ConfigureAwait(false);
             }
