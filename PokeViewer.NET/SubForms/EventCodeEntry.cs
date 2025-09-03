@@ -1,22 +1,23 @@
-﻿using PKHeX.Core;
-using SysBot.Base;
-using System.Collections.Generic;
-using System;
-using static SysBot.Base.SwitchButton;
-using static System.Buffers.Binary.BinaryPrimitives;
-using static PokeViewer.NET.RoutineExecutor;
-using static PokeViewer.NET.ViewerUtil;
-using Microsoft.VisualBasic;
+﻿using Microsoft.VisualBasic;
+using PKHeX.Core;
 using PKHeX.Drawing;
 using PKHeX.Drawing.PokeSprite;
-using System.Security.Policy;
-using System.Diagnostics.Eventing.Reader;
-using System.Diagnostics;
-using RaidCrawler.Core.Structures;
-using System.ComponentModel.DataAnnotations;
 using PokeViewer.NET.Misc;
 using PokeViewer.NET.Util;
+using RaidCrawler.Core.Structures;
+using SysBot.Base;
+using System;
+using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
+using System.Diagnostics;
+using System.Diagnostics.Eventing.Reader;
 using System.Net.Sockets;
+using System.Security.Policy;
+using static PokeViewer.NET.RoutineExecutor;
+using static PokeViewer.NET.ViewerUtil;
+using static SysBot.Base.SwitchButton;
+using static System.Buffers.Binary.BinaryPrimitives;
+using static System.Windows.Forms.VisualStyles.VisualStyleElement.Header;
 
 namespace PokeViewer.NET.SubForms
 {
@@ -464,7 +465,7 @@ namespace PokeViewer.NET.SubForms
                     return false;
                 }
             }
-            await Task.Delay(2_000 + (int)OverShoot.Value, token).ConfigureAwait(false);
+            await Task.Delay(1_000 + (int)OverShoot.Value, token).ConfigureAwait(false);
 
             if (LinkAccount.Checked)
             {
@@ -485,8 +486,8 @@ namespace PokeViewer.NET.SubForms
 
             LogUtil.LogText("Adjusting the cursor in the Portal.");
             // Move down to Link Trade.
-            await Task.Delay(2_000, token).ConfigureAwait(false);
-            await Click(DUP, 0_800, token).ConfigureAwait(false);
+            await Task.Delay(0_500, token).ConfigureAwait(false);
+            await Click(DUP, 0_800, token).ConfigureAwait(false);            
             return true;
         }
         private async Task<bool> PerformLinkCodeTrade(CancellationToken token)
@@ -515,7 +516,8 @@ namespace PokeViewer.NET.SubForms
                 if (fail)
                     return true;
                 fail = await Exit(token).ConfigureAwait(false);
-                if(fail) return true;
+                if(fail) 
+                    return true;
                 var pk = await WaitForGift(CurrentBoxOffset, token).ConfigureAwait(false);
                 bool sucess = false;
                 if (filter.Checked)
@@ -524,7 +526,8 @@ namespace PokeViewer.NET.SubForms
                         return false;
 
                     var Rate = SubForms.StopConditions.CalcRate(encounterFilters);
-                    RateBox.Text = $"Target Rate: {(1.00 - Math.Pow(1.00 - Rate, encounter)) * 100.00:0.00}%";
+                    var DisplayRate = (1.00 - Math.Pow(1.00 - Rate, encounter)) * 100.00;
+                    RateBox.Text = $"Target Rate: {DisplayRate:0.00}%";
                     for (int i = 0; i < encounterFilters.Count; i++)
                     {
                         if (!encounterFilters[i].Enabled)
@@ -546,7 +549,11 @@ namespace PokeViewer.NET.SubForms
                             break;
                         }
                     }
+                    if (!sucess)
+                        WebHookUtil.SendDetailNotifications(pk, PokeImg(pk, false), false, simpleTrainerInfo, isGift: true, Encounter: encounter, Rate: DisplayRate);
                 }
+                else if(pk != null)
+                    WebHookUtil.SendDetailNotifications(pk, PokeImg(pk, false), false, simpleTrainerInfo, isGift: true, Encounter: encounter);
                 return sucess;
             }
             return true;
@@ -579,7 +586,8 @@ namespace PokeViewer.NET.SubForms
                 pictureBox1.Image = null;
                 pictureBox2.Image = null;
                 pictureBox3.Image = null;
-                textBox2.Text = string.Empty;
+                if(textBox2.Visible)
+                    textBox2.Text = string.Empty;
                 var pk = await WaitForGift(CurrentBoxOffset, token).ConfigureAwait(false);
                 bool sucess = false;
                 if (filter.Checked)
@@ -588,7 +596,8 @@ namespace PokeViewer.NET.SubForms
                         return false;
 
                     var Rate = SubForms.StopConditions.CalcRate(encounterFilters);
-                    RateBox.Text = $"Target Rate: {(1.00 - Math.Pow(1.00 - Rate, encounter)) * 100.00:0.00}%";
+                    var DisplayRate = (1.00 - Math.Pow(1.00 - Rate, encounter)) * 100.00;
+                    RateBox.Text = $"Target Rate: {DisplayRate:0.00}%";
                     for (int i = 0; i < encounterFilters.Count; i++)
                     {
                         LogUtil.LogText($"Filter: {encounterFilters[i].Name}, Enabled: {encounterFilters[i].Enabled}");
@@ -611,7 +620,11 @@ namespace PokeViewer.NET.SubForms
                             break;
                         }
                     }
+                    if(!sucess)
+                        WebHookUtil.SendDetailNotifications(pk, PokeImg(pk, false), false, simpleTrainerInfo, isGift: true, Encounter:encounter, Rate: DisplayRate);
                 }
+                else if(pk != null)
+                    WebHookUtil.SendDetailNotifications(pk, PokeImg(pk, false), false, simpleTrainerInfo, isGift: true, Encounter: encounter);
                 return sucess;
             }
             return true;
@@ -625,6 +638,8 @@ namespace PokeViewer.NET.SubForms
             {
                 await Task.Delay(0_100, token).ConfigureAwait(false);
             }
+            for (int i = 0; NonCode.Checked && i < (int)PresentNum.Value; i++)
+                await Click(DDOWN, 0_800, token).ConfigureAwait(false);
             await Click(A, 4_000, token).ConfigureAwait(false);
             stopwatchgift.Restart();
             while (stopwatchgift.Elapsed <= TimeSpan.FromSeconds(16.0))
@@ -667,12 +682,14 @@ namespace PokeViewer.NET.SubForms
                 }
             }
 
-            await Click(A, 1_200, token).ConfigureAwait(false);
+            await Click(A, 0_800, token).ConfigureAwait(false);
+            while (!await IsInGiftMenu(token).ConfigureAwait(false))
+                await Task.Delay(0_500, token).ConfigureAwait(false);
             if (!NonCode.Checked)
                 await Click(DDOWN, 0_800, token).ConfigureAwait(false);
             await Click(A, 0_500, token).ConfigureAwait(false);
             if (FirstConnect.Checked)
-                await Click(A, (LanguageID)simpleTrainerInfo.Language == LanguageID.Japanese ? 1_000 : 1_500, token).ConfigureAwait(false);
+                await Click(A, (LanguageID)simpleTrainerInfo.Language == LanguageID.Japanese ? (NonCode.Checked ? 1_000 : 0_500) : (NonCode.Checked ? 0_500 : 1_500), token).ConfigureAwait(false);
 
             // Connect online if not already.
             if (LinkAccount.Checked)
@@ -689,23 +706,28 @@ namespace PokeViewer.NET.SubForms
                     await Click(A, 0_500, token).ConfigureAwait(false);
                 var stopwatch = new Stopwatch();
                 stopwatch.Restart();
-                while (stopwatch.Elapsed <= TimeSpan.FromSeconds(FirstConnect.Checked ? ((LanguageID)simpleTrainerInfo.Language == LanguageID.Japanese ? 6.5 : 7.0) : 10.0))
+                while (stopwatch.Elapsed <= TimeSpan.FromSeconds(FirstConnect.Checked ? NonCode.Checked ? ((LanguageID)simpleTrainerInfo.Language == LanguageID.Japanese ? 5.0 : 5.3) : ((LanguageID)simpleTrainerInfo.Language == LanguageID.Japanese ? 5.5 : 5.0) : 6.2))
                 {
-                    await Task.Delay(0_500, token).ConfigureAwait(false);
+                    await Task.Delay(0_100, token).ConfigureAwait(false);
                 }
-                for (int i = 0; i < (FirstConnect.Checked ? 2 : 1); i++)
-                    await Click(A, 3_000, token).ConfigureAwait(false);
+                if (FirstConnect.Checked)                
+                    await Click(A,(LanguageID)simpleTrainerInfo.Language == LanguageID.Japanese ? 2_100 : 2_300, token).ConfigureAwait(false);                
+
+                await Click(A, NonCode.Checked ? 3_000 : 1_500, token).ConfigureAwait(false);
             }
             if (!NonCode.Checked)
                 await EnterCode(token).ConfigureAwait(false);
+
+            for(int i = 0; NonCode.Checked && i < (int)PresentNum.Value; i++)            
+                await Click(DDOWN, 0_800, token).ConfigureAwait(false);            
 
             for (int i = 0; i < 4; i++)
                 await Click(A, 4_500, token).ConfigureAwait(false);
             var stopwatchgift = new Stopwatch();
             stopwatchgift.Restart();
-            while (stopwatchgift.Elapsed <= TimeSpan.FromSeconds(4.0))
+            while (stopwatchgift.Elapsed <= TimeSpan.FromSeconds(1.5))
             {
-                await Task.Delay(0_500, token).ConfigureAwait(false);
+                await Task.Delay(0_100, token).ConfigureAwait(false);
             }
             for (int i = 0; i < (Item.Checked ? 1 : 2); i++)
                 await Click(A, 0_500, token).ConfigureAwait(false);
@@ -731,8 +753,8 @@ namespace PokeViewer.NET.SubForms
             }
             Stopwatch stopwatchgift = new();
             stopwatchgift.Restart();
-            while (stopwatchgift.Elapsed <= TimeSpan.FromSeconds(4.0))
-                await Task.Delay(0_500, token).ConfigureAwait(false);
+            while (stopwatchgift.Elapsed <= TimeSpan.FromSeconds(3.0))
+                await Task.Delay(0_100, token).ConfigureAwait(false);
             await Click(B, 0_500, token).ConfigureAwait(false);
             if (token.IsCancellationRequested)
             {
@@ -902,7 +924,16 @@ namespace PokeViewer.NET.SubForms
 
             var offset = await Executor.SwitchConnection.PointerAll(ViewerOffsets.PortalBoxStatusPointer, token).ConfigureAwait(false);
             var data = await Executor.SwitchConnection.ReadBytesAbsoluteAsync(offset, 1, token).ConfigureAwait(false);
-            return data[0] >= 9;
+            return data[0] == 0x10;
+        }
+        private async Task<bool> IsInGiftMenu(CancellationToken token)
+        {
+            if (!Executor.SwitchConnection.Connected)
+                Executor.SwitchConnection.Reset();
+
+            var offset = await Executor.SwitchConnection.PointerAll(ViewerOffsets.PortalBoxStatusPointer, token).ConfigureAwait(false);
+            var data = await Executor.SwitchConnection.ReadBytesAbsoluteAsync(offset, 1, token).ConfigureAwait(false);
+            return data[0] == 0x14;
         }
         private async Task<bool> IsInBox(CancellationToken token)
         {
@@ -1007,13 +1038,13 @@ namespace PokeViewer.NET.SubForms
             for (int i = 0; i < keystopress.Count; i++)
             {
                 await Executor.SwitchConnection.SendAsync(SwitchCommand.TypeKey(keystopress[i], true), token).ConfigureAwait(false);
-                await Task.Delay(0_700, token).ConfigureAwait(false);
+                await Task.Delay(0_550, token).ConfigureAwait(false);
             }
             //await Executor.SwitchConnection.SendAsync(SwitchCommand.TypeMultipleKeys(keystopress, Executor.UseCRLF), token).ConfigureAwait(false);
             await Click(PLUS, 0_500, token).ConfigureAwait(false);
             await Click(PLUS, 0_500, token).ConfigureAwait(false);
 
-            await Task.Delay(6_500).ConfigureAwait(false);
+            await Task.Delay(5_000).ConfigureAwait(false);            
         }
         private Image? GetGemImage(int teratype)
         {
@@ -1083,8 +1114,15 @@ namespace PokeViewer.NET.SubForms
             }
             else
             {
-                var DiffItems = await itemStructure.GetDiffItems(Itemdata, token).ConfigureAwait(false);
-                DGV_View.Populate(DiffItems, 0);                
+                try
+                {
+                    var DiffItems = await itemStructure.GetDiffItems(Itemdata, token).ConfigureAwait(false);
+                    await DGV_View.Populate(DiffItems, simpleTrainerInfo.Language).ConfigureAwait(false);
+                }
+                catch(Exception ex)
+                {
+                    LogUtil.LogError(ex.ToString(), "Failed to populate DGV_View with item data.");                    
+                }
             }
 
             if (Item.Checked)
@@ -1097,12 +1135,14 @@ namespace PokeViewer.NET.SubForms
             {
                 textBox2.Visible = false;
                 DGV_View.Visible = true;
+                filter.Checked = false;
             }
             else
             {
                 DGV_View.Visible = false;
                 textBox2.Visible = true;
             }
+            filter.Enabled = !Item.Checked;
         }
 
         private async Task<(bool, ulong, byte, int)> ReadEmptySlot(bool ReadSlot, byte CurrentBox, int CurrentSlot, CancellationToken token)
@@ -1278,8 +1318,9 @@ namespace PokeViewer.NET.SubForms
                     EnableAssets();
                     return;
                 }
-                catch
+                catch(Exception ex)
                 {
+                    LogUtil.LogError(ex.ToString(), "Redeem Error");
                     if (Executor.SwitchConnection.Connected)
                     {
                         try
@@ -1340,6 +1381,17 @@ namespace PokeViewer.NET.SubForms
         {
             GiftCode.Text = string.Empty;
         }
+        private ulong GetDateTime(byte[] data)
+        {
+            Epoch1900DateTimeValue epoch1900DateTime = new(data);
+            return epoch1900DateTime.TotalSeconds;
+        }
+        private async Task<(ulong, ulong)> GetLastSaveTime(ulong init, CancellationToken token)
+        {
+            var data = await ReadEncryptedBlockObject(StaticViewer.BlocksOverworld.LastSaved, init, token).ConfigureAwait(false);
+            var LastSavedTime = GetDateTime(data.Item1);
+            return (data.Item2, LastSavedTime);
+        }
         private static byte[] DecryptBlock(uint key, byte[] block)
         {
             var rng = new SCXorShift32(key);
@@ -1378,7 +1430,7 @@ namespace PokeViewer.NET.SubForms
             var res = DecryptBlock(block.Key, data);
             return res[0] == 2;
         }
-        private async Task<(byte[]?, ulong)> ReadEncryptedBlockObject(DataBlock block, ulong init, CancellationToken token)
+        private async Task<(byte[], ulong)> ReadEncryptedBlockObject(DataBlock block, ulong init, CancellationToken token)
         {
             while (init == 0)
             {
@@ -1599,6 +1651,7 @@ namespace PokeViewer.NET.SubForms
             filter.Enabled = true;
             Num.Enabled = !filter.Checked;
             Repeatable.Enabled = true;
+            PresentNum.Enabled = true;
             if (MultiGift.Visible)
                 MultiGift.Enabled = true;
         }
@@ -1618,6 +1671,7 @@ namespace PokeViewer.NET.SubForms
             Num.Enabled = false;
             filter.Enabled = false;
             Repeatable.Enabled = false;
+            PresentNum.Enabled = false;
             if (MultiGift.Visible)
                 MultiGift.Enabled = false;
         }

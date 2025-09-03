@@ -53,11 +53,14 @@
             Repeatable = new CheckBox();
             RateBox = new TextBox();
             MultiGift = new CheckBox();
+            PresentLabel = new Label();
+            PresentNum = new NumericUpDown();
             ((System.ComponentModel.ISupportInitialize)Num).BeginInit();
             ((System.ComponentModel.ISupportInitialize)OverShoot).BeginInit();
             ((System.ComponentModel.ISupportInitialize)pictureBox2).BeginInit();
             ((System.ComponentModel.ISupportInitialize)pictureBox3).BeginInit();
             ((System.ComponentModel.ISupportInitialize)pictureBox1).BeginInit();
+            ((System.ComponentModel.ISupportInitialize)PresentNum).BeginInit();
             SuspendLayout();
             // 
             // DGV_View
@@ -150,14 +153,13 @@
             // 
             // OverShoot
             // 
+            OverShoot.Increment = new decimal(new int[] { 100, 0, 0, 0 });
             OverShoot.Location = new Point(278, 485);
             OverShoot.Maximum = new decimal(new int[] { 2500, 0, 0, 0 });
-            OverShoot.Minimum = new decimal(new int[] { 500, 0, 0, 0 });
             OverShoot.Name = "OverShoot";
             OverShoot.Size = new Size(95, 23);
             OverShoot.TabIndex = 4;
             OverShoot.TextAlign = HorizontalAlignment.Center;
-            OverShoot.Value = new decimal(new int[] { 1000, 0, 0, 0 });
             // 
             // HasReset
             // 
@@ -314,11 +316,30 @@
             MultiGift.UseVisualStyleBackColor = true;
             MultiGift.Visible = false;
             // 
+            // PresentLabel
+            // 
+            PresentLabel.AutoSize = true;
+            PresentLabel.Location = new Point(15, 605);
+            PresentLabel.Name = "PresentLabel";
+            PresentLabel.Size = new Size(78, 15);
+            PresentLabel.TabIndex = 100;
+            PresentLabel.Text = "Present Index";
+            // 
+            // PresentNum
+            // 
+            PresentNum.Location = new Point(99, 603);
+            PresentNum.Name = "PresentNum";
+            PresentNum.Size = new Size(43, 23);
+            PresentNum.TabIndex = 101;
+            PresentNum.TextAlign = HorizontalAlignment.Center;
+            // 
             // EventCodeEntry
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
-            ClientSize = new Size(437, 628);
+            ClientSize = new Size(437, 639);
+            Controls.Add(PresentNum);
+            Controls.Add(PresentLabel);
             Controls.Add(MultiGift);
             Controls.Add(RateBox);
             Controls.Add(Repeatable);
@@ -353,6 +374,7 @@
             ((System.ComponentModel.ISupportInitialize)pictureBox2).EndInit();
             ((System.ComponentModel.ISupportInitialize)pictureBox3).EndInit();
             ((System.ComponentModel.ISupportInitialize)pictureBox1).EndInit();
+            ((System.ComponentModel.ISupportInitialize)PresentNum).EndInit();
             ResumeLayout(false);
             PerformLayout();
         }
@@ -383,5 +405,7 @@
         private ItemResultGridView DGV_View;
         private TextBox RateBox;
         private CheckBox MultiGift;
+        private Label PresentLabel;
+        private NumericUpDown PresentNum;
     }
 }

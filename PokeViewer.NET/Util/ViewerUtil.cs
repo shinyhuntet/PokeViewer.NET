@@ -96,7 +96,7 @@ namespace PokeViewer.NET
         public static bool HasRibbon(IRibbonIndex pk, out RibbonIndex result)
         {
             result = default;
-            for (var ribbon = RibbonIndex.ChampionKalos; ribbon <= RibbonIndex.MarkTitan; ribbon++)
+            for (var ribbon = RibbonIndex.ChampionKalos; ribbon <= RibbonIndex.Partner; ribbon++)
             {
                 if (pk.GetRibbon((int)ribbon))
                 {
@@ -106,11 +106,37 @@ namespace PokeViewer.NET
             }
             return false;
         }
+        public static bool HasOnlyMark(IRibbonIndex pk, out List<RibbonIndex> result)
+        {
+            result = [];
+            for (var mark = RibbonIndex.MarkLunchtime; mark <= RibbonIndex.MarkTitan; mark++)
+            {
+                if (pk.GetRibbon((int)mark))                
+                    result.Add(mark);                
+            }
+            if(result.Count > 0)
+                return true;
+            return false;
+        }
+        public static bool HasOnlyRibbon(IRibbonIndex pk, out List<RibbonIndex> result)
+        {
+            result = [];
+            for (var ribbon = RibbonIndex.ChampionKalos; ribbon < RibbonIndex.MarkLunchtime; ribbon++)
+            {
+                if (pk.GetRibbon((int)ribbon))                
+                    result.Add(ribbon);                
+            }
+            if(pk.GetRibbon((int)RibbonIndex.Partner))
+                result.Add(RibbonIndex.Partner);
+            if (result.Count > 0)
+                return true;
+            return false;
+        }
 
         public static bool HasAffixedRibbon(IRibbonSetAffixed pk, out RibbonIndex result)
         {
             result = default;
-            for (var mark = RibbonIndex.ChampionKalos; mark <= RibbonIndex.MarkTitan; mark++)
+            for (var mark = RibbonIndex.ChampionKalos; mark <= RibbonIndex.Partner; mark++)
             {
                 if (pk.AffixedRibbon == ((int)mark))
                 {
@@ -166,6 +192,7 @@ namespace PokeViewer.NET
         // Sword and Shield
         public IReadOnlyList<long> OverworldPointerSWSH { get; } = new long[] { 0x2636678, 0xC0, 0x80 };
         public readonly uint CurrentScreenOffset = 0x6B30FA00;
+        public readonly uint ItemsOffset = 0x45067A98;
         public readonly uint MenuScreen = 0xFF3428C4;
         public readonly uint OverworldScreen = 0xFFFFFFFF;
         public readonly uint MysteryGiftScreen = 0xFFA95FFF;
@@ -220,7 +247,7 @@ namespace PokeViewer.NET
             Name = "KMysteryGift",
             Key = 0x99E1625E,
             Type = SCTypeCode.Object,
-            Pointer = new List<long> { 0x4763C80, 0x08, 0x220, 0x40 }, // ver 3.0.1
+            Pointer = new List<long> { 0x4763C80, 0x08, 0x220, 0x40 }, // ver 4.0.0
             IsEncrypted = false,
             Size = 0x7EB0,
         };

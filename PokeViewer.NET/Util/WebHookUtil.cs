@@ -63,7 +63,7 @@ public static class WebHookUtil
         return WebHook;
     }
 
-    public static async void SendDetailNotifications(PKM pk, string thumbnail, bool pinguser, SimpleTrainerInfo trainerInfo, bool isStaic = false, int Encounter = 0, double Rate = 0)
+    public static async void SendDetailNotifications(PKM pk, string thumbnail, bool pinguser, SimpleTrainerInfo trainerInfo, bool isStaic = false, bool isGift = false, int Encounter = 0, double Rate = 0)
     {
         if (pk == null || !pk.Valid || pk.Species <= 0 || pk.Species > (ushort)Species.MAX_COUNT || string.IsNullOrEmpty(Settings.Default.WebHook))
             return;
@@ -72,7 +72,7 @@ public static class WebHookUtil
             return;
         try
         {
-            var webhook = GenerateWebHookDetail(pk, thumbnail, pinguser, trainerInfo, isStaic, Encounter, Rate);
+            var webhook = GenerateWebHookDetail(pk, thumbnail, pinguser, trainerInfo, isStaic, isGift, Encounter, Rate);
             var content = new StringContent(JsonConvert.SerializeObject(webhook), Encoding.UTF8, "application/json");
             foreach (var url in DiscordWebhooks)
                 await Client.PostAsync(url, content).ConfigureAwait(false);
@@ -84,13 +84,15 @@ public static class WebHookUtil
         }
     }
     
-    private static object GenerateWebHookDetail(PKM pk, string thumbnail, bool pinguser, SimpleTrainerInfo trainerInfo, bool isStaic = false, int Encounter = 0, double Rate = 0)
+    private static object GenerateWebHookDetail(PKM pk, string thumbnail, bool pinguser, SimpleTrainerInfo trainerInfo, bool isStaic = false, bool isGift = false, int Encounter = 0, double Rate = 0)
     {
         GameStrings Strings = GameInfo.GetStrings("en");
         string userContent = pinguser ? $"<@{Settings.Default.UserDiscordID}>\n{Settings.Default.PingMessage}" : "";
-        string title = pinguser ? $"Match Found!" : isStaic ? $"Static Pokemon Found!{Environment.NewLine}Encounter #{Encounter}{Environment.NewLine}Target Rate: {Rate:0.00}%" : "Unwanted match..";
-        string MarkString = "";
-        string EmojiMark = MarkEmoji(pk, out MarkString);
+        string title = pinguser ? $"Match Found!" : isStaic || isGift ? $"{(isStaic ? "Static" : "Mystery Gift")} Pokemon Found!{Environment.NewLine}Encounter #{Encounter}{(Rate <= 0 ? "" : $"{Environment.NewLine}Target Rate: {Rate:0.00}%")}" : "Unwanted match..";
+        List<string> EmojiMark = MarkEmoji(pk, out List<string> MarkString);
+        bool hasMark = MarkString.Count > 0;
+        List<string> EmojiRibbon = RibbonEmoji(pk, out List<string> RibbonString);
+        bool hasRibbon = RibbonString.Count > 0;
         Span<int> _ivs = stackalloc int[6];
         pk.GetIVs(_ivs);
         var ivs = IVsStringEmoji(ToSpeedLast(_ivs));
@@ -114,18 +116,12 @@ public static class WebHookUtil
                     new
                     {
                         title,
-                        description = "Pokemon Info",
+                        description = "**Pokemon Info**",
                         color = SetColor(pk),
-                        timestamp = DisplayTime.ToString("yyyy-MM-dd HH:mm:ss"),
                         author = new
-                        {                          
+                        {
                             name  = (Ball)pk.Ball != Ball.None ? "Pokemon you've obtained" : "Wild Pokemon",
                             icon_url = (Ball)pk.Ball != Ball.None ? GetBallImg(pk) : "https://raw.githubusercontent.com/kwsch/PKHeX/master/PKHeX.Drawing.Misc/Resources/img/ribbons/ribbonmarkalpha.png",
-                        },
-                        footer = new
-                        {
-                            text = $"Trainer Info{Environment.NewLine}{(!string.IsNullOrEmpty(pk.OriginalTrainerName) ? $"OT:{pk.OriginalTrainerName} | TID:{pk.DisplayTID} | SID:{pk.DisplaySID}\nLanguage: {(LanguageID)pk.Language}\nTimeZone: {timezone.StandardName}" : $"OT:{trainerInfo.OT} | TID:{(pk.TrainerIDDisplayFormat == TrainerIDFormat.SixDigit ? trainerID % 1000000 : trainerInfo.TID16)} | SID:{(pk.TrainerIDDisplayFormat == TrainerIDFormat.SixDigit ? trainerID / 1000000 : trainerInfo.SID16)}\nLanguage: {(LanguageID)trainerInfo.Language}\nTimeZone: {timezone.StandardName}")}",
-                            icon_url = "https://raw.githubusercontent.com/kwsch/PKHeX/master/PKHeX.Drawing.PokeSprite/Resources/img/ball/_ball16.png"
                         },
                         thumbnail = new
                         {
@@ -134,21 +130,37 @@ public static class WebHookUtil
                         fields = new List<object>
                         {
                             new { name = "Species               ", value = $"{ShinyEmoji(pk.IsShiny, pk.ShinyXor == 0)}{(Species)pk.Species}{Egg_Viewer.FormOutput(Strings, pk.Species, pk.Form, out _)} {GenderEmoji(pk.Gender)}", inline = true, },
+                            new { name = $"{(pk.IsEgg ? $"Egg Hatch Cycle {Emoji["Egg"]}               " : "")}", value = $"{(pk.IsEgg ? $"{pk.CurrentFriendship}" : "")}", inline = pk.IsEgg, },
                             new { name = $"{(!string.IsNullOrEmpty(teratype) ? "TeraType               " : "")}", value = $"{(!string.IsNullOrEmpty(teratype) ? $"{teratype}" : "")}", inline = !string.IsNullOrEmpty(teratype), },
                             new { name = $"{(!string.IsNullOrEmpty(gmax) ? "Gigantamax               " : "")}", value = $"{(!string.IsNullOrEmpty(gmax) ? $"{gmax}\n** **" : "")}", inline = !string.IsNullOrEmpty(gmax), },
-                            new { name = $"{(pk.IsEgg ? $"Egg Hatch Cycle {Emoji["Egg"]}               " : "")}", value = $"{(pk.IsEgg ? $"{pk.CurrentFriendship}" : "")}", inline = pk.IsEgg, },
                             new { name = "PID               ", value = $"{pk.PID:X}", inline = true, },
                             new { name = "EncryptionConstatnt               ", value = $"{pk.EncryptionConstant:X}", inline = true, },
                             new { name = "Nature               ", value = $"{pk.Nature}\n** **", inline = true, },
                             new { name = "Ability               ", value = $"{(Ability)pk.Ability}", inline = true, },
-                            new { name = "Mark               ", value = $"{(!string.IsNullOrEmpty(MarkString) ? $"{MarkString}{EmojiMark}" : "None")}", inline = true, },
-                            new { name = "Scale               ", value = ScaleString(pk) + "\n** **" , inline = true, },
-                            new { name = "Level               ", value = $"{pk.CurrentLevel}", inline = true, },
+                            new { name = "Mark               ", value = $"{(hasMark ? $"{string.Join(Environment.NewLine, ConcatStringList(MarkString, EmojiMark))}" : "None")}", inline = true, },
+                            new { name = $"{(hasRibbon ? "Ribbon               " : "")}", value = $"{(hasRibbon ? $"{string.Join(Environment.NewLine, ConcatStringList(RibbonString, EmojiRibbon))}\n** **" : "\n** **")}", inline = hasRibbon, },
+                            new { name = "Scale               ", value = ScaleString(pk) , inline = true, },
+                            new { name = "Level               ", value = $"{pk.CurrentLevel}\n** **", inline = true, },
                             new { name = "Moves               ", value = movestr, inline = true, },
-                            new { name = $"{(hasItem ? "HeldItem               " : "")}", value = $"{( hasItem ? $"**{Strings.itemlist[pk.HeldItem]}**" : "")}", inline = true, },
-                            new { name = "IVs               ", value = ivs, inline = true, },
+                            new { name = "IVs               ", value = ivs + "\n** **", inline = true, },
                             new { name = "EVs               ", value = evs, inline = true, },
 
+                        },
+                    },
+                    new
+                    {
+                        description = "**Miscellaneous Info**",
+                        color = SetColor(pk),
+                        author = new
+                        {
+                            name  = hasItem ? $"Held Item: {Strings.itemlist[pk.HeldItem]}" : "No Held Item",
+                            icon_url = hasItem ? $"https://raw.githubusercontent.com/kwsch/PKHeX/master/PKHeX.Drawing.PokeSprite/Resources/img/Artwork%20Items/aitem_{pk.HeldItem}.png" : "https://raw.githubusercontent.com/kwsch/PKHeX/master/PKHeX.Drawing.PokeSprite/Resources/img/Pokemon%20Sprite%20Overlays/helditem.png",
+                        },
+                        timestamp = DisplayTime.ToString("yyyy-MM-dd HH:mm:ss"),
+                        footer = new
+                        {
+                            text = $"Trainer Info{Environment.NewLine}{(!string.IsNullOrEmpty(pk.OriginalTrainerName) ? $"OT:{pk.OriginalTrainerName} | TID:{pk.DisplayTID} | SID:{pk.DisplaySID}\nLanguage: {(LanguageID)pk.Language}\nTimeZone: {timezone.StandardName}" : $"OT:{trainerInfo.OT} | TID:{(pk.TrainerIDDisplayFormat == TrainerIDFormat.SixDigit ? trainerID % 1000000 : trainerInfo.TID16)} | SID:{(pk.TrainerIDDisplayFormat == TrainerIDFormat.SixDigit ? trainerID / 1000000 : trainerInfo.SID16)}\nLanguage: {(LanguageID)trainerInfo.Language}\nTimeZone: {timezone.StandardName}")}",
+                            icon_url = "https://raw.githubusercontent.com/kwsch/PKHeX/master/PKHeX.Drawing.PokeSprite/Resources/img/ball/_ball16.png"
                         },
                     }
                 }
@@ -224,23 +236,65 @@ public static class WebHookUtil
             return scaleString;
     }
 
-    private static string MarkEmoji(PKM pk, out string MarkString)
+    private static List<string> ConcatStringList(List<string> list1, List<string> list2)
     {
-        string emoji = "";
-        MarkString = "";
+        List<string> result = [];
+        if(list1.Count == 0 || list2.Count == 0)
+            return result;
+        result = list1.Select((z, Index) => Index >= list2.Count ? z + list2.Last() : z + list2[Index]).ToList();
+        return result;
+    }
+
+    private static List<string> MarkEmoji(PKM pk, out List<string> MarkString)
+    {
+        List<string> emoji = [];
+        MarkString = [];
         if (pk is PK8 pk8)
         {
-            bool hasMark = HasMark(pk8, out RibbonIndex mark);
-            MarkString = hasMark ? mark.ToString().Replace("Mark", "") : "";
-            if (hasMark && Emoji.ContainsKey(MarkString))
-                emoji = $"{Emoji[$"{MarkString}"]}";
+            bool hasMark = HasOnlyMark(pk8, out List<RibbonIndex> mark);
+            MarkString = hasMark ? mark.Select(z => z.ToString().Replace("Mark", "")).ToList() : [];
+            foreach(var m in MarkString)
+            {
+                if (Emoji.ContainsKey(m))
+                    emoji.Add($"{Emoji[m]}");
+            }
         }
         else if(pk is PK9 pk9)
         {
-            bool hasMark = HasMark(pk9, out RibbonIndex mark);
-            MarkString = hasMark ? mark.ToString().Replace("Mark", "") : "";
-            if (hasMark && Emoji.ContainsKey(MarkString))
-                emoji = $"{Emoji[$"{MarkString}"]}";
+            bool hasMark = HasOnlyMark(pk9, out List<RibbonIndex> mark);
+            MarkString = hasMark ? mark.Select(z => z.ToString().Replace("Mark", "")).ToList() : [];
+            foreach (var m in MarkString)
+            {
+                if (Emoji.ContainsKey(m))
+                    emoji.Add($"{Emoji[m]}");
+            }
+        }
+        return emoji;
+    }
+
+    private static List<string> RibbonEmoji(PKM pk, out List<string> RibbonString)
+    {
+        List<string> emoji = [];
+        RibbonString = [];
+        if (pk is PK8 pk8)
+        {
+            bool hasRibbon = HasOnlyRibbon(pk8, out List<RibbonIndex> mark);
+            RibbonString = hasRibbon ? mark.Select(z => z == RibbonIndex.Partner ? z.ToString() + "Ribbon" : z.ToString().Replace("Mark", "")).ToList() : [];
+            foreach(var ribbon in RibbonString)
+            {                
+                if (Emoji.ContainsKey(ribbon))
+                    emoji.Add($"{Emoji[ribbon]}");
+            }
+        }
+        else if (pk is PK9 pk9)
+        {
+            bool hasRibbon = HasOnlyRibbon(pk9, out List<RibbonIndex> mark);
+            RibbonString = hasRibbon ? mark.Select(z => z == RibbonIndex.Partner ? z.ToString() + "Ribbon" : z.ToString().Replace("Mark", "")).ToList() : [];
+            foreach (var ribbon in RibbonString)
+            {
+                if (Emoji.ContainsKey(ribbon))
+                    emoji.Add($"{Emoji[ribbon]}");
+            }
         }
         return emoji;
     }
@@ -296,7 +350,7 @@ public static class WebHookUtil
             if (i < 5)
                 s += "\n";            
         }
-        return s + "\n" + "** **";
+        return s;
     }
     private static string GetBallImg(PKM pkm)
     {
@@ -305,7 +359,13 @@ public static class WebHookUtil
 
     public static Dictionary<string, string> Emoji { get; set; } = new()
     {
-
+        { "Classic", "<:ribbonclassic:1403723076268458005>" },
+        { "Birthday", "<:ribbonbirthday:1403724402322968689>" },
+        { "ChampionBattle", "<:ribbonchampionbattle:1403724865734840431>" },
+        { "Event", "<:ribbonevent:1403724207258337331>" },
+        { "Wishing", "<:ribbonwishing:1403723820585455646>" },
+        { "PartnerRibbon" , "<:partner:1391327584620511366>" },
+        { "Partner", "<:MarkPartner:1266688105277292544>" },
         { "Lunchtime", "<:lunchtime:1391338148071604246>" },    
         { "SleepyTime" , "<:sleepytime:1391326666055225364>" },    
         { "Dusk" , "<:dusk:1391329433864110090>" },    
@@ -357,7 +417,6 @@ public static class WebHookUtil
         { "Jumbo" , "<:jumbo:1391329458484412476>" },
         { "Mini" , "<:mini:1391339282039570432>" },
         { "Itemfinder" , "<:itemfinder:1391329450662166528>" },
-        { "Partner" , "<:partner:1391327584620511366>" },
         { "Gourmand" , "<:gourmand:1391329443015823500>" },
         { "OnceInALifetime" , "<:onceinalifetime:1391351895209017384>" },
         { "Alpha" , "<:alpha:1391328184477155338>" },

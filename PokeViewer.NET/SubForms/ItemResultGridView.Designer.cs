@@ -87,7 +87,6 @@ namespace PokeViewer.NET.SubForms
             ((System.ComponentModel.ISupportInitialize)DGV_View).EndInit();
             ResumeLayout(false);
         }
-
         #endregion
 
         private DataGridView DGV_View;

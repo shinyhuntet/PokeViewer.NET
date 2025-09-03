@@ -28,6 +28,7 @@
         /// </summary>
         private void InitializeComponent()
         {
+            DGV_View = new ItemResultGridView();
             Num = new NumericUpDown();
             RedeemCount = new Label();
             ResetMysteryGifts = new Button();
@@ -58,6 +59,15 @@
             ((System.ComponentModel.ISupportInitialize)pictureBox1).BeginInit();
             ((System.ComponentModel.ISupportInitialize)GiftIndex).BeginInit();
             SuspendLayout();
+            // 
+            // DGV_View
+            // 
+            DGV_View.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            DGV_View.Location = new Point(18, 207);
+            DGV_View.Name = "DGV_View";
+            DGV_View.Size = new Size(315, 228);
+            DGV_View.TabIndex = 0;
+            DGV_View.Visible = false;
             // 
             // Num
             // 
@@ -296,6 +306,7 @@
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
             ClientSize = new Size(487, 607);
+            Controls.Add(DGV_View);
             Controls.Add(RateBox);
             Controls.Add(GiftIndex);
             Controls.Add(GiftLabel);
@@ -357,5 +368,6 @@
         private Label GiftLabel;
         private NumericUpDown GiftIndex;
         private TextBox RateBox;
+        private ItemResultGridView DGV_View;
     }
 }

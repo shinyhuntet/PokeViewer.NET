@@ -25,6 +25,8 @@ namespace PokeViewer.NET.SubForms
         private readonly ViewerState Executor;
         private readonly WideViewerSV wideViewerSV;
         private readonly SimpleTrainerInfo simpleTrainerInfo;
+        private readonly ItemStructure ItemStructure;
+        private List<InventoryPouch> ItemData = [];
         protected ViewerOffsets ViewerOffsets { get; } = new();
         public EventCodeEntrySWSH(int GameType, ref ViewerState executor, (Color, Color) color, SimpleTrainerInfo trainerInfo)
         {
@@ -32,6 +34,7 @@ namespace PokeViewer.NET.SubForms
             simpleTrainerInfo = trainerInfo;
             InitializeComponent();
             Executor = executor;
+            ItemStructure = new(Executor);
             filtermode = FilterMode.MysteryGift_SWSH;
             var filterpath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, $"{filtermode}filters.json");
             if (File.Exists(filterpath))
@@ -449,7 +452,11 @@ namespace PokeViewer.NET.SubForms
                 pictureBox3.Image = null;
                 textBox2.Text = string.Empty;
                 await InitializeSessionOffsets(token).ConfigureAwait(false);
-                if (!ItemGift.Checked)
+                if (ItemGift.Checked)
+                {
+                    ItemData = await ItemStructure.ReadGiftItemSWSH(token).ConfigureAwait(false);
+                }
+                else
                 {
                     (ReadSlot, CurrentBoxOffset, CurrentBox, CurrentBoxSlot) = await ReadEmptySlot(ReadSlot, CurrentBox, CurrentBoxSlot, token).ConfigureAwait(false);
                     if (!ReadSlot)
@@ -469,7 +476,8 @@ namespace PokeViewer.NET.SubForms
                         return false;
 
                     var Rate = SubForms.StopConditions.CalcRate(encounterFilters);
-                    RateBox.Text = $"Target Rate: {(1.00 - Math.Pow(1.00 - Rate, encounter)) * 100.00:0.00}%";
+                    var DisplayRate = (1.00 - Math.Pow(1.00 - Rate, encounter)) * 100.00;
+                    RateBox.Text = $"Target Rate: {DisplayRate:0.00}%";
                     for (int i = 0; i < encounterFilters.Count; i++)
                     {
                         if (!encounterFilters[i].Enabled)
@@ -491,7 +499,11 @@ namespace PokeViewer.NET.SubForms
                             break;
                         }
                     }
+                    if (!sucess)
+                        WebHookUtil.SendDetailNotifications(pk, PokeImg(pk, pk.CanGigantamax), false, simpleTrainerInfo, isGift: true, Encounter: encounter, Rate: DisplayRate);
                 }
+                else if (pk != null)
+                    WebHookUtil.SendDetailNotifications(pk, PokeImg(pk, pk.CanGigantamax), false, simpleTrainerInfo, isGift: true, Encounter: encounter);
                 return sucess;
             }
             return true;
@@ -501,15 +513,19 @@ namespace PokeViewer.NET.SubForms
             if (!token.IsCancellationRequested)
             {
                 await InitializeSessionOffsets(token).ConfigureAwait(false);
-                if (!ItemGift.Checked)
+                if(ItemGift.Checked)
+                {
+                    ItemData = await ItemStructure.ReadGiftItemSWSH(token).ConfigureAwait(false);
+                }
+                else
                 {
                     (ReadSlot, CurrentBoxOffset, CurrentBox, CurrentBoxSlot) = await ReadEmptySlot(ReadSlot, CurrentBox, CurrentBoxSlot, token).ConfigureAwait(false);
                     if (!ReadSlot)
                         return true;
                     //textBox2.Text = $"ReadSlot: {ReadSlot}{Environment.NewLine}Current Box Offset: {CurrentBoxOffset:X}{Environment.NewLine}Current Box: {CurrentBox + 1}{Environment.NewLine}Current Slot: {CurrentBoxSlot + 1}";
                 }
-                // StartFromOverworld can be true on first pass or if something went wrong last trade.
-                var fail = await GiftSetUp(token).ConfigureAwait(false);
+                    // StartFromOverworld can be true on first pass or if something went wrong last trade.
+                    var fail = await GiftSetUp(token).ConfigureAwait(false);
                 if (fail)
                     return true;
                 StartFromOverworld = false;
@@ -526,7 +542,8 @@ namespace PokeViewer.NET.SubForms
                         return false;
 
                     var Rate = SubForms.StopConditions.CalcRate(encounterFilters);
-                    RateBox.Text = $"Target Rate: {(1.00 - Math.Pow(1.00 - Rate, encounter)) * 100.00:0.00}%";
+                    var DisplayRate = (1.00 - Math.Pow(1.00 - Rate, encounter)) * 100.00;
+                    RateBox.Text = $"Target Rate: {DisplayRate:0.00}%";
                     for (int i = 0; i < encounterFilters.Count; i++)
                     {
                         LogUtil.LogText($"Filter: {encounterFilters[i].Name}, Enabled: {encounterFilters[i].Enabled}");
@@ -549,7 +566,11 @@ namespace PokeViewer.NET.SubForms
                             break;
                         }
                     }
+                    if(!sucess)
+                        WebHookUtil.SendDetailNotifications(pk, PokeImg(pk, pk.CanGigantamax), false, simpleTrainerInfo, isGift: true, Encounter: encounter, Rate:DisplayRate);
                 }
+                else if(pk != null)
+                    WebHookUtil.SendDetailNotifications(pk, PokeImg(pk, pk.CanGigantamax), false, simpleTrainerInfo, isGift: true, Encounter: encounter);
                 return sucess;
             }
             return true;
@@ -805,44 +826,66 @@ namespace PokeViewer.NET.SubForms
 
         private async Task<PK8?> WaitForGift(uint Offset, CancellationToken token)
         {
-            if (ItemGift.Checked)
-                return null;
-            var attempts = 0;
-            var pk = await ReadGiftPokemon(Offset, token).ConfigureAwait(false);
-            while (pk == null)
+            var pk = new PK8();
+            if (!ItemGift.Checked)
             {
-                await Task.Delay(0_050).ConfigureAwait(false);
+                var attempts = 0;
                 pk = await ReadGiftPokemon(Offset, token).ConfigureAwait(false);
-                attempts++;
-                if (attempts >= 60)
-                    break;
-            }
-            if (pk != null)
-            {
-                encounter++;
-                var client = new HttpClient();
-                string output = wideViewerSV.GetRealPokemonString(pk);
-                textBox2.Text = $"Encounter #{encounter}{Environment.NewLine}" + output;
-                var sprite = PokeImg(pk, pk.CanGigantamax);
-                var response = await client.GetStreamAsync(sprite, token).ConfigureAwait(false);
-                Image img = Image.FromStream(response);
-                var img2 = (Image)new Bitmap(img, new Size(img.Width, img.Height));
-                if (pk.IsShiny)
+                while (pk == null)
                 {
-                    Image? shiny = pk.ShinyXor == 0 ? ShinySquare : ShinyStar;
-                    shiny = new Bitmap(shiny!, new Size(shiny!.Width * 3 / 8, shiny!.Height * 3 / 8));
-                    img2 = ImageUtil.LayerImage(img2, shiny, 105, 5);
+                    await Task.Delay(0_050).ConfigureAwait(false);
+                    pk = await ReadGiftPokemon(Offset, token).ConfigureAwait(false);
+                    attempts++;
+                    if (attempts >= 60)
+                        break;
                 }
-                pictureBox2.Image = img2;
-                pictureBox3.Image = await GetGemImage(pk.CanGigantamax, token).ConfigureAwait(false);
-                if (HasRibbon(pk, out RibbonIndex mark))
+                if (pk != null)
                 {
-                    string url = $"https://raw.githubusercontent.com/kwsch/PKHeX/master/PKHeX.Drawing.Misc/Resources/img/ribbons/ribbon{mark.ToString().ToLower()}.png";
-                    pictureBox1.Load(url);
+                    encounter++;
+                    var client = new HttpClient();
+                    string output = wideViewerSV.GetRealPokemonString(pk);
+                    textBox2.Text = $"Encounter #{encounter}{Environment.NewLine}" + output;
+                    var sprite = PokeImg(pk, pk.CanGigantamax);
+                    var response = await client.GetStreamAsync(sprite, token).ConfigureAwait(false);
+                    Image img = Image.FromStream(response);
+                    var img2 = (Image)new Bitmap(img, new Size(img.Width, img.Height));
+                    if (pk.IsShiny)
+                    {
+                        Image? shiny = pk.ShinyXor == 0 ? ShinySquare : ShinyStar;
+                        shiny = new Bitmap(shiny!, new Size(shiny!.Width * 3 / 8, shiny!.Height * 3 / 8));
+                        img2 = ImageUtil.LayerImage(img2, shiny, 105, 5);
+                    }
+                    pictureBox2.Image = img2;
+                    pictureBox3.Image = await GetGemImage(pk.CanGigantamax, token).ConfigureAwait(false);
+                    if (HasRibbon(pk, out RibbonIndex mark))
+                    {
+                        string url = $"https://raw.githubusercontent.com/kwsch/PKHeX/master/PKHeX.Drawing.Misc/Resources/img/ribbons/ribbon{mark.ToString().ToLower()}.png";
+                        pictureBox1.Load(url);
+                    }
+                }
+                else
+                {
+                    var DiffItems = await ItemStructure.GetDiffItemsSWSH(ItemData, token).ConfigureAwait(false);
+                    await DGV_View.Populate(DiffItems, simpleTrainerInfo.Language).ConfigureAwait(false);
                 }
             }
 
             return pk;
+        }
+        private void ItemGift_CheckedChanged(object sender, EventArgs e)
+        {
+            if (ItemGift.Checked)
+            {
+                textBox2.Visible = false;
+                DGV_View.Visible = true;
+                filter.Checked = false;
+            }
+            else
+            {
+                DGV_View.Visible = false;
+                textBox2.Visible = true;
+            }
+            filter.Enabled = !ItemGift.Checked;
         }
         private async Task<(bool, uint, byte, int)> ReadEmptySlot(bool ReadSlot, byte CurrentBox, int CurrentSlot, CancellationToken token)
         {
@@ -885,37 +928,7 @@ namespace PokeViewer.NET.SubForms
                 return pk;
             return null;
         }
-        private async Task<InventoryItem[]> ReadGiftItem(ulong ItemOffset, InventoryType type, CancellationToken token)
-        {
-            if (!Executor.SwitchConnection.Connected)            
-                Executor.SwitchConnection.Reset();
-
-            var TrainerSav = new SAV9SV();
-            var data = await Executor.SwitchConnection.ReadBytesAbsoluteAsync(ItemOffset, TrainerSav.Items.Data.Length, token).ConfigureAwait(false);
-            data.CopyTo(TrainerSav.Items.Data);
-            var pouch = type switch
-            {
-                InventoryType.Medicine => TrainerSav.Inventory[0],
-                InventoryType.Balls => TrainerSav.Inventory[1],
-                InventoryType.BattleItems => TrainerSav.Inventory[2],
-                InventoryType.Berries => TrainerSav.Inventory[3],
-                InventoryType.Items => TrainerSav.Inventory[4],
-                InventoryType.TMHMs => TrainerSav.Inventory[5],
-                InventoryType.Treasure => TrainerSav.Inventory[6],
-                InventoryType.KeyItems => TrainerSav.Inventory[7],
-                InventoryType.Ingredients => TrainerSav.Inventory[8],
-                InventoryType.Candy => TrainerSav.Inventory[9],
-                _ => throw new IndexOutOfRangeException("Index is out of range")
-            };
-            return pouch.Items;
-        }
-        private void ItemGift_CheckedChanged(object sender, EventArgs e)
-        {
-            if(ItemGift.Checked)
-                filter.Checked = false;
-            filter.Enabled = !ItemGift.Checked;
-        }
-
+        
         private async void RedeemButton_Click(object sender, EventArgs e)
         {
             using (cts = new CancellationTokenSource())

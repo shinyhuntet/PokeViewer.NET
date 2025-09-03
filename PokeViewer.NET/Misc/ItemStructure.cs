@@ -29,6 +29,7 @@ public class ItemStructure
             if (CountChangeItem == null)
                 continue;
             item.Count -= CountChangeItem.Count;
+            LogUtil.LogText($"Item {GameInfo.GetStrings("en").itemlist[item.Index]}({item.Index}) count is changed by {item.Count}(from {CountChangeItem.Count} to {item.Count + CountChangeItem.Count}).");
             ChangedItems.Add(item);
         }
         return ChangedItems;
@@ -37,13 +38,21 @@ public class ItemStructure
     private async Task<SAV9SV> GetFakeTrainerSAVSV(CancellationToken token)
     {
         if (!Executor.SwitchConnection.Connected)            
-            await Executor.Connect(token).ConfigureAwait(false);
+            Executor.SwitchConnection.Reset();
 
         var sav = new SAV9SV();
         var info = sav.MyStatus;
         var read = await Executor.SwitchConnection.PointerPeek(info.Data.Length, Offsets.MyStatusPointerSV, token).ConfigureAwait(false);
         read.CopyTo(info.Data);
         return sav;
+    }
+    public async Task<SAV8SWSH> GetFakeTrainerSAVSWSH(CancellationToken token)
+    {
+        var sav = new SAV8SWSH();
+        var info = sav.MyStatus;
+        var read = await Executor.SwitchConnection.ReadBytesAsync(Offsets.TrainerDataOffsetSWSH, Offsets.TrainerDataLengthSWSH, token).ConfigureAwait(false);
+        read.CopyTo(info.Data);
+        return sav;    
     }
     public async Task<InventoryPouch> GetPouches(CancellationToken token)
     {
@@ -159,6 +168,13 @@ public class ItemStructure
         data.CopyTo(TrainerSav.Items.Data);
         return TrainerSav.Inventory.ToList();
     }
+    public async Task<List<InventoryPouch>> ReadGiftItemSWSH(CancellationToken token)
+    {
+        SAV8SWSH TrainerSav = await GetFakeTrainerSAVSWSH(token).ConfigureAwait(false);
+        var data = await Executor.SwitchConnection.ReadBytesAsync(Offsets.ItemsOffset, TrainerSav.Items.Data.Length, token).ConfigureAwait(false);
+        data.CopyTo(TrainerSav.Items.Data);
+        return TrainerSav.Inventory.ToList();
+    }
     public async Task<bool> HasShinyCharm(CancellationToken token)
     {
         var pouch = await GetBag(InventoryType.KeyItems, token).ConfigureAwait(false);
@@ -175,7 +191,7 @@ public class ItemStructure
     public async Task<List<InventoryItem>> GetDiffItems(List<InventoryPouch> ItemData, CancellationToken token)
     {
         if (!Executor.SwitchConnection.Connected)            
-            await Executor.Connect(token).ConfigureAwait(false);
+            Executor.SwitchConnection.Reset();
 
         ItemBlockOffset = await Executor.SwitchConnection.PointerAll(Offsets.ItemBlock, token).ConfigureAwait(false);
         List<InventoryPouch> ItemDataNew = await ReadGiftItem(ItemBlockOffset, token).ConfigureAwait(false);
@@ -197,6 +213,39 @@ public class ItemStructure
             {
                 var diffItems = GrabAllDiffItems(ItemDataNew[i].Items, ItemData[i].Items);
                 var success = diffItems.FirstOrDefault() != null && diffItems.Count > 0;
+                LogUtil.LogText($"Found {diffItems.Count} diff items in {(InventoryType)i} pouch.");
+                if (!success)
+                    continue;
+                DiffItems = DiffItems.Concat(diffItems).ToList();
+            }
+        }
+        return DiffItems;
+    }
+    public async Task<List<InventoryItem>> GetDiffItemsSWSH(List<InventoryPouch> ItemData, CancellationToken token)
+    {
+        if (!Executor.SwitchConnection.Connected)
+            Executor.SwitchConnection.Reset();
+
+        List<InventoryPouch> ItemDataNew = await ReadGiftItemSWSH(token).ConfigureAwait(false);
+        List<InventoryItem> DiffItems = [];
+        int attempts = 0;
+        while (ItemDataNew.SequenceEqual(ItemData))
+        {
+            LogUtil.LogText("Item sequence is same! Reloading...");
+            await Task.Delay(0_050).ConfigureAwait(false);
+            ItemDataNew = await ReadGiftItemSWSH(token).ConfigureAwait(false);
+            attempts++;
+            if (attempts >= 60)
+                break;
+        }
+        if (!ItemDataNew.SequenceEqual(ItemData))
+        {
+            LogUtil.LogText("Gift Item Found!");
+            for (int i = 0; i < Math.Min(ItemDataNew.Count, ItemData.Count); i++)
+            {
+                var diffItems = GrabAllDiffItems(ItemDataNew[i].Items, ItemData[i].Items);
+                var success = diffItems.FirstOrDefault() != null && diffItems.Count > 0;
+                LogUtil.LogText($"Found {diffItems.Count} diff items in {(InventoryType)i} pouch.");
                 if (!success)
                     continue;
                 DiffItems = DiffItems.Concat(diffItems).ToList();

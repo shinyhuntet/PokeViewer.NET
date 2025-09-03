@@ -328,15 +328,11 @@ namespace PokeViewer.NET.SubForms
                 await Task.Delay(1_000, token).ConfigureAwait(false);
             if (await PlayerNotOnMount(token).ConfigureAwait(false))
                 await Click(PLUS, 0_800, token).ConfigureAwait(false);
-            CollideTaskRunning = false;
-            while (OverworldTaskRunning)
-                await Task.Delay(1_000, token).ConfigureAwait(false);
-            CollideTaskRunning = true;
             while (await PlayerNotOnMount(token).ConfigureAwait(false))
             {
                 CollideTaskRunning = false;
                 CheckCount++;
-                await Task.Delay(1_000, token).ConfigureAwait(false);
+                await Task.Delay(0_500, token).ConfigureAwait(false);
                 CollideTaskRunning = true;
                 while (OverworldTaskRunning)
                     await Task.Delay(1_000, token).ConfigureAwait(false);
@@ -346,18 +342,19 @@ namespace PokeViewer.NET.SubForms
                 if (!await PlayerNotOnMount(token).ConfigureAwait(false))
                     break;
                 CollideTaskRunning = false;
-                while (OverworldTaskRunning)
-                    await Task.Delay(1_000, token).ConfigureAwait(false);
+                await Task.Delay(0_500, token).ConfigureAwait(false);
 
                 if (CheckCount >= 2)
                 {
                     CollideTaskRunning = true;
-                    await RefreshOnMountOffset(token).ConfigureAwait(false);
-                    CollideTaskRunning = false;
                     while (OverworldTaskRunning)
                         await Task.Delay(1_000, token).ConfigureAwait(false);
+                    await RefreshOnMountOffset(token).ConfigureAwait(false);
+                    CollideTaskRunning = false;
                 }
                 CollideTaskRunning = true;
+                while (OverworldTaskRunning)
+                    await Task.Delay(1_000, token).ConfigureAwait(false);
             }
             CollideTaskRunning = false;
         }
@@ -716,7 +713,7 @@ ReSave:
                     if (staticfound)
                     {
                         if (!match)
-                            WebHookUtil.SendDetailNotifications(pk, sprite, false, TrainerInfo, true, encountercount, DisplayRate);
+                            WebHookUtil.SendDetailNotifications(pk, sprite, false, TrainerInfo, true, Encounter:encountercount, Rate:DisplayRate);
                         break;
                     }
                 }
@@ -834,6 +831,13 @@ ReSave:
             return;
         }
 
+        private async Task RefreshOverworldOffset(CancellationToken token)
+        {
+            OverworldOffset = await Executor.SwitchConnection.PointerAll(Offsets.OverworldPointer, token).ConfigureAwait(false);
+            while (OverworldOffset <= 0)
+                OverworldOffset = await Executor.SwitchConnection.PointerAll(Offsets.OverworldPointer, token).ConfigureAwait(false);
+            return;
+        }
         private string GetRealPokemonString(int encountercount, PK9 pkm)
         {
             string pid = $"{Environment.NewLine}{eggviewer.ChangeLanguageString(Language.SelectedIndex, 1)}: {pkm.PID:X8}";
@@ -1078,7 +1082,8 @@ ReSave:
                 await Click(A, 0_800, token).ConfigureAwait(false);
         }
         private async Task RecoverToOverworldMulti(CancellationToken token)
-        {            
+        {     
+            //int B_Count = 0;
             while (!token.IsCancellationRequested)
             {
                 while (CollideTaskRunning)
@@ -1088,10 +1093,17 @@ ReSave:
                 while (!await IsOnOverworld(OverworldOffset, token).ConfigureAwait(false))
                 {
                     if (await IsInBattle(token).ConfigureAwait(false))                    
-                        await DefeatPokemon(token).ConfigureAwait(false);                                            
+                        await DefeatPokemon(token).ConfigureAwait(false);                    
                     else
-                        await Click(B, 1_000, token).ConfigureAwait(false);                    
+                    {
+                        await Click(B, 1_000, token).ConfigureAwait(false);
+                        //B_Count++;
+                        /*if (B_Count >= 5)
+                            break;*/
+                    }
+                    await RefreshOverworldOffset(token).ConfigureAwait(false);
                 }
+                //B_Count = 0;
                 OverworldTaskRunning = false;
                 if (CollideTaskComplete)
                     return;
@@ -1103,12 +1115,19 @@ ReSave:
             if (!Executor.SwitchConnection.Connected)
                 Executor.SwitchConnection.Reset();
             
+            //int B_Count = 0;
             while (!await IsOnOverworld(OverworldOffset, token).ConfigureAwait(false))
             {
                 if (await IsInBattle(token).ConfigureAwait(false))
                     await DefeatPokemon(token).ConfigureAwait(false);
                 else
+                {
                     await Click(B, 1_000, token).ConfigureAwait(false);
+                    //B_Count++;
+                    /*if (B_Count >= 5)
+                                break;*/
+                }
+                await RefreshOverworldOffset(token).ConfigureAwait(false);
             }
         }
         
