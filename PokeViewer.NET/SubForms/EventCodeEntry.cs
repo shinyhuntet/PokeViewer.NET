@@ -509,7 +509,7 @@ namespace PokeViewer.NET.SubForms
                     (ReadSlot, CurrentBoxOffset, CurrentBox, CurrentBoxSlot) = await ReadEmptySlot(ReadSlot, CurrentBox, CurrentBoxSlot, token).ConfigureAwait(false);
                     if (!ReadSlot)
                         return true;
-                    textBox2.Text = $"ReadSlot: {ReadSlot}{Environment.NewLine}Current Box Offset: {CurrentBoxOffset:X}{Environment.NewLine}Current Box: {CurrentBox + 1}{Environment.NewLine}Current Slot: {CurrentBoxSlot + 1}";
+                    //textBox2.Text = $"ReadSlot: {ReadSlot}{Environment.NewLine}Current Box Offset: {CurrentBoxOffset:X}{Environment.NewLine}Current Box: {CurrentBox + 1}{Environment.NewLine}Current Slot: {CurrentBoxSlot + 1}";
                 }
                 // StartFromOverworld can be true on first pass or if something went wrong last trade.
                 var fail = await GiftSetUp(token).ConfigureAwait(false);
@@ -689,7 +689,7 @@ namespace PokeViewer.NET.SubForms
                 await Click(DDOWN, 0_800, token).ConfigureAwait(false);
             await Click(A, 0_500, token).ConfigureAwait(false);
             if (FirstConnect.Checked)
-                await Click(A, (LanguageID)simpleTrainerInfo.Language == LanguageID.Japanese ? (NonCode.Checked ? 1_000 : 0_500) : (NonCode.Checked ? 0_500 : 1_500), token).ConfigureAwait(false);
+                await Click(A, (LanguageID)simpleTrainerInfo.Language == LanguageID.Japanese ? (NonCode.Checked ? 0_800 : 0_500) : (NonCode.Checked ? 0_500 : 1_500), token).ConfigureAwait(false);
 
             // Connect online if not already.
             if (LinkAccount.Checked)
@@ -706,12 +706,12 @@ namespace PokeViewer.NET.SubForms
                     await Click(A, 0_500, token).ConfigureAwait(false);
                 var stopwatch = new Stopwatch();
                 stopwatch.Restart();
-                while (stopwatch.Elapsed <= TimeSpan.FromSeconds(FirstConnect.Checked ? NonCode.Checked ? ((LanguageID)simpleTrainerInfo.Language == LanguageID.Japanese ? 5.0 : 5.3) : ((LanguageID)simpleTrainerInfo.Language == LanguageID.Japanese ? 5.5 : 5.0) : 6.2))
+                while (stopwatch.Elapsed <= TimeSpan.FromSeconds(FirstConnect.Checked ? NonCode.Checked ? ((LanguageID)simpleTrainerInfo.Language == LanguageID.Japanese ? 5.3 : 5.5) : ((LanguageID)simpleTrainerInfo.Language == LanguageID.Japanese ? 5.5 : 5.0) : 6.2))
                 {
                     await Task.Delay(0_100, token).ConfigureAwait(false);
                 }
                 if (FirstConnect.Checked)                
-                    await Click(A,(LanguageID)simpleTrainerInfo.Language == LanguageID.Japanese ? 2_100 : 2_300, token).ConfigureAwait(false);                
+                    await Click(A,(LanguageID)simpleTrainerInfo.Language == LanguageID.Japanese ? 2_200 : 2_400, token).ConfigureAwait(false);                
 
                 await Click(A, NonCode.Checked ? 3_000 : 1_500, token).ConfigureAwait(false);
             }

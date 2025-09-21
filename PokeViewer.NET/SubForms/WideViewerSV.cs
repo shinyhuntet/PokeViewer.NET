@@ -19,6 +19,7 @@ using Newtonsoft.Json;
 using PokeViewer.NET.Properties;
 using PokeViewer.NET.Util;
 using NLog.Time;
+using System.Diagnostics.Eventing.Reader;
 
 namespace PokeViewer.NET.SubForms
 {
@@ -90,8 +91,10 @@ namespace PokeViewer.NET.SubForms
         private readonly long DateCycle = (long)TimeSpan.FromMinutes(72).TotalSeconds;
         private readonly SimpleTrainerInfo TrainerInfo;
         private bool CollideTaskComplete = false;
-        private bool CollideTaskRunning = false;
-        private bool OverworldTaskRunning = false;
+        private Task ScanTask = Task.Delay(1_000);
+        private Task OverworldTask = Task.Delay(1_000);
+        private AutoResetEvent ScanEvent = new(false);
+        private AutoResetEvent OverworldEvent = new(false);
 
         public void LoadOutbreakCache()
         {
@@ -288,6 +291,41 @@ namespace PokeViewer.NET.SubForms
             }
             return (ivsequencemax, ivsequencemin);
         }
+        private async Task GetTaskStatus(CancellationToken token)
+        {
+            while (true)
+            {
+                if (token.IsCancellationRequested)
+                {
+                    //ScanEvent.Reset();
+                    ScanEvent.Set();
+                    //OverworldEvent.Reset();
+                    OverworldEvent.Set();
+                    break;
+                }
+                if (CollideTaskComplete)
+                    break;
+                await Task.Delay(0_100, CancellationToken.None).ConfigureAwait(false);
+            }
+        }
+        private bool GetCheckState(CheckBox checkBox)
+        {
+            if (InvokeRequired)
+            {
+                return Invoke(() => checkBox.Checked);
+            }
+            else
+                return checkBox.Checked;
+        }
+        private bool GetTextStatus(TextBox textBox)
+        {
+            if (InvokeRequired)
+            {
+                return Invoke(() => !string.IsNullOrEmpty(textBox.Text));
+            }
+            else
+                return !string.IsNullOrEmpty(textBox.Text);
+        }
         private async void button1_Click(object sender, EventArgs e) => await AutoScan().ConfigureAwait(false);
         private async Task AutoScan(bool ReConnect = false)
         {
@@ -338,88 +376,145 @@ namespace PokeViewer.NET.SubForms
                     {
                         ResetTaskStatus();
                         Task ReadTask = Task.Run(async () => { await CollideRead(token).ConfigureAwait(false); CollideTaskComplete = true; });
-                        await Task.WhenAll(ReadTask, RecoverToOverworld(token)).ConfigureAwait(false);
+                        await Task.WhenAll(ReadTask, RecoverToOverworld(token), GetTaskStatus(token)).ConfigureAwait(false);
                     }
-                    if (!ReConnect && MapCheck.Checked)
+                    if (!ReConnect && GetCheckState(MapCheck))
                     {
-                        if (TeleportMode.Checked)
+                        if (GetCheckState(TeleportMode))
                         {
                             if (string.IsNullOrEmpty(coordx) || string.IsNullOrEmpty(coordy) || string.IsNullOrEmpty(coordz))
                             {
                                 MessageBox.Show("Telport location is empty! Go to Teleport location.");
                                 Task ColledeRead = Task.Run(async () => { await CollideReadPro(token).ConfigureAwait(false); CollideTaskComplete = true; });
                                 ResetTaskStatus();
-                                await Task.WhenAll(ColledeRead, RecoverToOverworld(token)).ConfigureAwait(false);                                
+                                await Task.WhenAll(ColledeRead, RecoverToOverworld(token), GetTaskStatus(token)).ConfigureAwait(false);                                
                             }
                             else
                             {
                                 Task CollideTask = Task.Run(async () => { await CollideToSpot(coordx, coordy, coordz, token).ConfigureAwait(false); CollideTaskComplete = true; });
                                 ResetTaskStatus();
-                                await Task.WhenAll(CollideTask, RecoverToOverworld(token)).ConfigureAwait(false);
+                                await Task.WhenAll(CollideTask, RecoverToOverworld(token), GetTaskStatus(token)).ConfigureAwait(false);
                             }
                         }
                         await SetUpMap(token).ConfigureAwait(false);
-                        MapCheck.Checked = false;
+                        if(InvokeRequired)
+                            Invoke(() => MapCheck.Checked = false);
+                        else
+                            MapCheck.Checked = false;
                     }
-                    if (checkBox7.Checked && !string.IsNullOrEmpty(XCoord.Text) && !string.IsNullOrEmpty(YCoord.Text) && !string.IsNullOrEmpty(ZCoord.Text))
+                    if (GetCheckState(checkBox7) && GetTextStatus(XCoord) && GetTextStatus(YCoord) && GetTextStatus(ZCoord))
                     {
                         Task CollideTask = Task.Run(async() => { await CollideToCave(false, token).ConfigureAwait(false); CollideTaskComplete = true; });
                         ResetTaskStatus();
-                        await Task.WhenAll(CollideTask, RecoverToOverworld(token)).ConfigureAwait(false);
+                        await Task.WhenAll(CollideTask, RecoverToOverworld(token), GetTaskStatus(token)).ConfigureAwait(false);
                         
                     }
-                    if (OutbreakType.SelectedIndex > 0 || TimeCombo.SelectedIndex > 0)
+                    if (InvokeRequired)
                     {
-                        var waiting = 0;
-                        var enable = false;
-                        if (OutbreakSpeciesBox.SelectedIndex < 0)
+                        await Invoke(async () =>
                         {
-                            EnableOptions();
-                            enable = true;
-                        }
-                        while (OutbreakSpeciesBox.SelectedIndex < 0)
-                        {
-                            await Task.Delay(2_000).ConfigureAwait(false);
-                            waiting++;
-                            if (waiting >= 30)
+                            if (OutbreakType.SelectedIndex > 0 || TimeCombo.SelectedIndex > 0)
                             {
-                                OutbreakType.SelectedIndex = 0;
-                                TimeCombo.SelectedIndex = 0;
-                                break;
+                                var waiting = 0;
+                                var enable = false;
+                                if (OutbreakSpeciesBox.SelectedIndex < 0)
+                                {
+                                    EnableOptions();
+                                    enable = true;
+                                }
+                                while (OutbreakSpeciesBox.SelectedIndex < 0)
+                                {
+                                    await Task.Delay(2_000, token).ConfigureAwait(false);
+                                    waiting++;
+                                    if (waiting >= 30)
+                                    {
+                                        OutbreakType.SelectedIndex = 0;
+                                        TimeCombo.SelectedIndex = 0;
+                                        break;
+                                    }
+                                }
+                                if (enable)
+                                    DisableOptions();
                             }
-                        }
-                        if (enable)
-                            DisableOptions();
+                            if (Reset.Checked)
+                            {
+                                CountCacheP = 0;
+                                CountCacheK = 0;
+                                CountCacheB = 0;
+                                CountCacheBCP = 0;
+                                CountCacheBCK = 0;
+                                CountCacheBCB = 0;
+                                CacheField = 0;
+                                OutbreakCache = new();
+                                BCATOutbreakCache = new();
+                                LoadOutbreakCache();
+                                LoadBCATOutbreakCache();
+                            }
+                            if (!NonSaveMode.Checked && ShinyBoost.Checked && await itemStructure.HasShinyCharm(token).ConfigureAwait(false))
+                                ShinyBoost.Checked = false;
+                        });
                     }
-                    if (Reset.Checked)
+                    else
                     {
-                        CountCacheP = 0;
-                        CountCacheK = 0;
-                        CountCacheB = 0;
-                        CountCacheBCP = 0;
-                        CountCacheBCK = 0;
-                        CountCacheBCB = 0;
-                        CacheField = 0;
-                        OutbreakCache = new();
-                        BCATOutbreakCache = new();
-                        LoadOutbreakCache();
-                        LoadBCATOutbreakCache();
+                        if (OutbreakType.SelectedIndex > 0 || TimeCombo.SelectedIndex > 0)
+                        {
+                            var waiting = 0;
+                            var enable = false;
+                            if (OutbreakSpeciesBox.SelectedIndex < 0)
+                            {
+                                EnableOptions();
+                                enable = true;
+                            }
+                            while (OutbreakSpeciesBox.SelectedIndex < 0)
+                            {
+                                await Task.Delay(2_000, token).ConfigureAwait(false);
+                                waiting++;
+                                if (waiting >= 30)
+                                {
+                                    OutbreakType.SelectedIndex = 0;
+                                    TimeCombo.SelectedIndex = 0;
+                                    break;
+                                }
+                            }                                            
+                            if (enable)
+                                DisableOptions();
+                        }
+                        if (Reset.Checked)
+                        {
+                            CountCacheP = 0;
+                            CountCacheK = 0;
+                            CountCacheB = 0;
+                            CountCacheBCP = 0;
+                            CountCacheBCK = 0;
+                            CountCacheBCB = 0;
+                            CacheField = 0;
+                            OutbreakCache = new();
+                            BCATOutbreakCache = new();
+                            LoadOutbreakCache();
+                            LoadBCATOutbreakCache();
+                        }
+                        if (!GetCheckState(NonSaveMode) && GetCheckState(ShinyBoost) && await itemStructure.HasShinyCharm(token).ConfigureAwait(false))
+                            Invoke(() => ShinyBoost.Checked = false);
                     }
-                    if (!NonSaveMode.Checked && ShinyBoost.Checked && await itemStructure.HasShinyCharm(token).ConfigureAwait(false))
-                        ShinyBoost.Checked = false;
                     await BoostShinyRolls(token).ConfigureAwait(false);
                     await ScanOverworld(token, ReConnect).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException)
                 {
                     success = false;
-                    MessageBox.Show(this, "Process has been canceled!", "Cancel", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    if (InvokeRequired)
+                        Invoke(() => MessageBox.Show(this, "Process has been canceled!", "Cancel", MessageBoxButtons.OK, MessageBoxIcon.Information));
+                    else
+                        MessageBox.Show(this, "Process has been canceled!", "Cancel", MessageBoxButtons.OK, MessageBoxIcon.Information);
                     EnableOptions();
                 }
                 catch (Exception ex)
                 {
                     LogUtil.LogText(ex.ToString());
-                    ConnectionBox.Text = $"Switch Connection Connected: {Executor.SwitchConnection.Connected}{Environment.NewLine}Console Connection Connected: {Executor.Connection.Connected} ";
+                    if (InvokeRequired)
+                        Invoke(() => ConnectionBox.Text = $"Switch Connection Connected: {Executor.SwitchConnection.Connected}{Environment.NewLine}Console Connection Connected: {Executor.Connection.Connected} ");
+                    else
+                        ConnectionBox.Text = $"Switch Connection Connected: {Executor.SwitchConnection.Connected}{Environment.NewLine}Console Connection Connected: {Executor.Connection.Connected} ";
                     if (Executor.SwitchConnection.Connected)
                     {
                         try
@@ -428,12 +523,26 @@ namespace PokeViewer.NET.SubForms
                         }
                         catch (SocketException soketEx)
                         {
-                            AutoReConnet.Checked = false;
-                            MessageBox.Show(this, soketEx.ToString(), "Sokect Connetion Exception!");
+                            if (InvokeRequired)
+                            {
+                                Invoke(() =>
+                                {
+                                    AutoReConnet.Checked = false;
+                                    MessageBox.Show(this, soketEx.ToString(), "Sokect Connetion Exception!");
+                                });
+                            }
+                            else
+                            {
+                                AutoReConnet.Checked = false;
+                                MessageBox.Show(this, soketEx.ToString(), "Sokect Connetion Exception!");
+                            }
                         }
                     }
-                    ConnectionBox.Text += $"{Environment.NewLine}Switch Connection Connected(Updated): {Executor.SwitchConnection.Connected}{Environment.NewLine}Console Connection Connected(Updated): {Executor.Connection.Connected} ";
-                    if (AutoReConnet.Checked)
+                    if (InvokeRequired)
+                        Invoke(() => ConnectionBox.Text += $"{Environment.NewLine}Switch Connection Connected(Updated): {Executor.SwitchConnection.Connected}{Environment.NewLine}Console Connection Connected(Updated): {Executor.Connection.Connected} ");
+                    else
+                        ConnectionBox.Text += $"{Environment.NewLine}Switch Connection Connected(Updated): {Executor.SwitchConnection.Connected}{Environment.NewLine}Console Connection Connected(Updated): {Executor.Connection.Connected} ";
+                    if (GetCheckState(AutoReConnet))
                     {
                         try
                         {
@@ -459,13 +568,13 @@ namespace PokeViewer.NET.SubForms
                         }
                         catch (SocketException err)
                         {
-                            MessageBox.Show(this, err.ToString(), "ReConnect Sokcket Exception!");
+                            Invoke(() => MessageBox.Show(this, err.ToString(), "ReConnect Sokcket Exception!"));
                             EnableOptions();
                             return;
                         }
                         catch (Exception RecEx)
                         {
-                            MessageBox.Show(this, RecEx.ToString(), "ReConnect Exception except for Socket!");
+                            Invoke(() => MessageBox.Show(this, RecEx.ToString(), "ReConnect Exception except for Socket!"));
                             EnableOptions();
                             return;
                         }
@@ -474,7 +583,7 @@ namespace PokeViewer.NET.SubForms
                     }
                     EnableOptions();
                     success = false;
-                    MessageBox.Show(this, ex.ToString(), "Exception!");
+                    Invoke(() => MessageBox.Show(this, ex.ToString(), "Exception!"));
                 }
             }
 
@@ -482,7 +591,12 @@ namespace PokeViewer.NET.SubForms
             if (Executor.SwitchConnection.Connected)
                 await Executor.DetachController(CancellationToken.None).ConfigureAwait(false);
             if (!cts.IsCancellationRequested && cts != null && success)
-                MessageBox.Show(this, "Process has been finished!", "Finish", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            {
+                if (InvokeRequired)
+                    Invoke(() => MessageBox.Show(this, "Process has been finished!", "Finish", MessageBoxButtons.OK, MessageBoxIcon.Information));
+                else
+                    MessageBox.Show(this, "Process has been finished!", "Finish", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
         }
         private async Task TimeAdjust(CancellationToken token)
         {
@@ -494,7 +608,10 @@ namespace PokeViewer.NET.SubForms
             DateTime date = DateTime.UtcNow;
             while (seed == seed_new)
             {
-                OutbreakText.Text = $"{seed:X}";
+                if (InvokeRequired)
+                    Invoke(() => OutbreakText.Text = $"{seed:X}");
+                else
+                    OutbreakText.Text = $"{seed:X}";
                 await Task.Delay(5_000, token).ConfigureAwait(false);
                 await CloseGame(token).ConfigureAwait(false);
                 await Task.Delay(1_500, token).ConfigureAwait(false);
@@ -504,15 +621,31 @@ namespace PokeViewer.NET.SubForms
                 long curTime = await ResetNTPTime(token).ConfigureAwait(false);
                 DateTime epoch = new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc);
                 date = epoch.AddSeconds(curTime).ToLocalTime();
-                TimeText.Text = $"{date:yyyy/MM/dd HH:mm:ss}";
+                if (InvokeRequired)
+                    Invoke(() => TimeText.Text = $"{date:yyyy/MM/dd HH:mm:ss}");
+                else
+                    TimeText.Text = $"{date:yyyy/MM/dd HH:mm:ss}";
                 await Task.Delay(3_000, token).ConfigureAwait(false);
                 await InitilizeSessionOffsets(token);
                 seed_new = BitConverter.ToUInt64(await Executor.SwitchConnection.ReadBytesAbsoluteAsync(TeraRaidBlockOffset, 8, token).ConfigureAwait(false), 0);
             }
-            Reset.Checked = true;
-            if ((TeleportMode.Checked || ScanLocationCannotPicnic.Checked) && await PlayerNotOnMount(token).ConfigureAwait(false))
-                await Click(PLUS, 1_000, token).ConfigureAwait(false);
-            OutbreakText.Text = $"{seed_new:X}";
+            if (InvokeRequired)
+            {
+                await InvokeAsync(async() =>
+                {
+                    Reset.Checked = true;
+                    if ((TeleportMode.Checked || ScanLocationCannotPicnic.Checked) && await PlayerNotOnMount(token).ConfigureAwait(false))
+                        await Click(PLUS, 1_000, token).ConfigureAwait(false);
+                    OutbreakText.Text = $"{seed_new:X}";
+                });
+            }
+            else
+            {
+                Reset.Checked = true;
+                if ((TeleportMode.Checked || ScanLocationCannotPicnic.Checked) && await PlayerNotOnMount(token).ConfigureAwait(false))
+                    await Click(PLUS, 1_000, token).ConfigureAwait(false);
+                OutbreakText.Text = $"{seed_new:X}";
+            }
             if (coordList.Count <= 0)
                 MessageBox.Show($"OutbreakReset success! Previous Dayseed {seed:X}, Current Dayseed {seed_new:X}{Environment.NewLine}Current Time: {date:yyyy/MM/dd HH:mm:ss}");
         }
@@ -523,7 +656,10 @@ namespace PokeViewer.NET.SubForms
             var CurrentSeed = BitConverter.ToUInt64(await Executor.SwitchConnection.ReadBytesAbsoluteAsync(TeraRaidBlockOffset, 8, token).ConfigureAwait(false), 0);
             while (CurrentSeed != OriginalSeed)
             {
-                OutbreakText.Text = $"{CurrentSeed:X}";
+                if (InvokeRequired)
+                    Invoke(() => OutbreakText.Text = $"{CurrentSeed:X}");
+                else
+                    OutbreakText.Text = $"{CurrentSeed:X}";
                 await ResetToPreviousTime(setTime, token).ConfigureAwait(false);
                 CurrentSeed = BitConverter.ToUInt64(await Executor.SwitchConnection.ReadBytesAbsoluteAsync(TeraRaidBlockOffset, 8, token).ConfigureAwait(false), 0);
             }
@@ -561,11 +697,14 @@ namespace PokeViewer.NET.SubForms
                 catch (OperationCanceledException)
                 {
                     success = false;
-                    MessageBox.Show(this, "Process has been canceled!", "Cancel", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    if (InvokeRequired)
+                        Invoke(() => MessageBox.Show(this, "Process has been canceled!", "Cancel", MessageBoxButtons.OK, MessageBoxIcon.Information));
+                    else
+                        MessageBox.Show(this, "Process has been canceled!", "Cancel", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
                 catch (Exception ex)
                 {
-                    ConnectionBox.Text = $"Switch Connection Connected: {Executor.SwitchConnection.Connected}{Environment.NewLine}Console Connection Connected: {Executor.Connection.Connected} ";
+                    Invoke(() => ConnectionBox.Text = $"Switch Connection Connected: {Executor.SwitchConnection.Connected}{Environment.NewLine}Console Connection Connected: {Executor.Connection.Connected} ");
                     if (Executor.SwitchConnection.Connected)
                     {
                         try
@@ -577,7 +716,7 @@ namespace PokeViewer.NET.SubForms
                             MessageBox.Show(this, soketEx.ToString(), "Sokect Connetion Exception!");
                         }
                     }
-                    ConnectionBox.Text += $"{Environment.NewLine}Switch Connection Connected(Updated): {Executor.SwitchConnection.Connected}{Environment.NewLine}Console Connection Connected(Updated): {Executor.Connection.Connected} ";
+                    Invoke(() => ConnectionBox.Text += $"{Environment.NewLine}Switch Connection Connected(Updated): {Executor.SwitchConnection.Connected}{Environment.NewLine}Console Connection Connected(Updated): {Executor.Connection.Connected} ");
                     success= false;
                     MessageBox.Show(ex.ToString());
                 }
@@ -586,7 +725,7 @@ namespace PokeViewer.NET.SubForms
                 if (Executor.SwitchConnection.Connected)
                     await Executor.DetachController(CancellationToken.None).ConfigureAwait(false);
                 if (!cts.IsCancellationRequested && cts != null && success && coordList.Count <= 0)
-                    MessageBox.Show(this, "Process has been finished!", "Finish", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    Invoke(() => MessageBox.Show(this, "Process has been finished!", "Finish", MessageBoxButtons.OK, MessageBoxIcon.Information));
             }
         }
         private async void SetTimeButton_Click(object sender, EventArgs e)
@@ -615,7 +754,7 @@ namespace PokeViewer.NET.SubForms
                 }
                 catch (Exception ex)
                 {
-                    ConnectionBox.Text = $"Switch Connection Connected: {Executor.SwitchConnection.Connected}{Environment.NewLine}Console Connection Connected: {Executor.Connection.Connected} ";
+                    Invoke(() => ConnectionBox.Text = $"Switch Connection Connected: {Executor.SwitchConnection.Connected}{Environment.NewLine}Console Connection Connected: {Executor.Connection.Connected} ");
                     if (Executor.SwitchConnection.Connected)
                     {
                         try
@@ -627,7 +766,7 @@ namespace PokeViewer.NET.SubForms
                             MessageBox.Show(this, soketEx.ToString(), "Sokect Connetion Exception!");
                         }
                     }
-                    ConnectionBox.Text += $"{Environment.NewLine}Switch Connection Connected(Updated): {Executor.SwitchConnection.Connected}{Environment.NewLine}Console Connection Connected(Updated): {Executor.Connection.Connected} ";
+                    Invoke(() => ConnectionBox.Text += $"{Environment.NewLine}Switch Connection Connected(Updated): {Executor.SwitchConnection.Connected}{Environment.NewLine}Console Connection Connected(Updated): {Executor.Connection.Connected} ");
                     success = false;
                     MessageBox.Show(this, ex.ToString());
                 }
@@ -688,9 +827,9 @@ namespace PokeViewer.NET.SubForms
         private void ResetTaskStatus()
         {
             CollideTaskComplete = false;
-            CollideTaskRunning = false;
-            OverworldTaskRunning = false;
             FleeFailCount = 0;
+            OverworldEvent = new(false);
+            ScanEvent = new(false);
         }
         private async Task CollideReposite(CancellationToken token)
         {
@@ -706,97 +845,91 @@ namespace PokeViewer.NET.SubForms
         private async Task CollideRead(CancellationToken token)
         {
             await Collide(token).ConfigureAwait(false);
-            CollideTaskRunning = true;
-            while (OverworldTaskRunning)
-                await Task.Delay(1_000, token).ConfigureAwait(false);
+            ScanEvent.WaitOne();
             var coords = await Executor.SwitchConnection.PointerPeek(12, Offsets.CollisionPointer, token).ConfigureAwait(false);
-            CollideTaskRunning =false;
-            XCoord.Text = $"{BitConverter.ToSingle(coords.AsSpan()[..4])}";
-            YCoord.Text = $"{BitConverter.ToSingle(coords.AsSpan()[4..8])}";
-            ZCoord.Text = $"{BitConverter.ToSingle(coords.AsSpan()[8..12])}";
-            if (PicnicReset.Checked)
+            Invoke(() =>
             {
-                CollideTaskRunning = true;
-                while (OverworldTaskRunning)
-                    await Task.Delay(1_000, token).ConfigureAwait(false);
+                XCoord.Text = $"{BitConverter.ToSingle(coords.AsSpan()[..4])}";
+                YCoord.Text = $"{BitConverter.ToSingle(coords.AsSpan()[4..8])}";
+                ZCoord.Text = $"{BitConverter.ToSingle(coords.AsSpan()[8..12])}";
+            });
+            OverworldEvent.Set();
+            if (Invoke(() => PicnicReset.Checked))
+            {
+                ScanEvent.WaitOne();
                 await Click(PLUS, 0_800, token).ConfigureAwait(false);
-                CollideTaskRunning = false;
+                OverworldEvent.Set();
             }
-            if (checkBox6.Checked)
-                checkBox6.Checked =false;
+            if (InvokeRequired)
+                Invoke(() => checkBox6.Checked = false);
+            else
+            {
+                if (checkBox6.Checked)
+                    checkBox6.Checked =false;
+            }
         }
 
         private async Task Collide(CancellationToken token)
         {
             var CheckCount = 0;
-            CollideTaskRunning = true;
-            while (OverworldTaskRunning)
-                await Task.Delay(1_000, token).ConfigureAwait(false);
             if (await PlayerNotOnMount(token).ConfigureAwait(false))
                 await Click(PLUS, 0_800, token).ConfigureAwait(false);
             while (await PlayerNotOnMount(token).ConfigureAwait(false))
             {
-                CollideTaskRunning = false;
+                OverworldEvent.Set();
                 CheckCount++;
-                await Task.Delay(0_500, token).ConfigureAwait(false);
-                CollideTaskRunning = true;
-                while (OverworldTaskRunning)
-                    await Task.Delay(1_000, token).ConfigureAwait(false);
+                ScanEvent.WaitOne();
                 if (!await PlayerNotOnMount(token).ConfigureAwait(false))
                     break;
-                await Click(PLUS, 0_800, token).ConfigureAwait(false); 
+                await Click(PLUS, 0_800, token).ConfigureAwait(false);
+                OverworldEvent.Set();
+                ScanEvent.WaitOne();
                 if (!await PlayerNotOnMount(token).ConfigureAwait(false))
                     break;
-                CollideTaskRunning = false;
-                await Task.Delay(0_500, token).ConfigureAwait(false);
-
+                
                 if (CheckCount >= 1)
                 {
-                    CollideTaskRunning = true;
-                    while (OverworldTaskRunning)
-                        await Task.Delay(1_000, token).ConfigureAwait(false);
+                    OverworldEvent.Set();
+                    ScanEvent.WaitOne();
                     await RefreshOnMountOffset(token).ConfigureAwait(false);
-                    CollideTaskRunning = false;
+                    OverworldEvent.Set();
                 }
                 if (CheckCount >= 2 && CheckCount < 4)
                 {
+                    ScanEvent.WaitOne();
                     await ClosePicnic(token).ConfigureAwait(false);                    
                 }
                 if (CheckCount >= 4 && !await OverworldStateChanged(token).ConfigureAwait(false))
                 {
                     await RemoveEmotes(token).ConfigureAwait(false);
-                    CollideTaskRunning = false;
+                    OverworldEvent.Set();
                     CheckCount = 0;
                 }
-                CollideTaskRunning = true;
-                while (OverworldTaskRunning)
-                    await Task.Delay(1_000, token).ConfigureAwait(false);
+                ScanEvent.WaitOne();
             }
-            CollideTaskRunning = false;
+            OverworldEvent.Set();
         }
         
         static Object lockObj = new Object();
         
         private async Task RecoverToOverworld(CancellationToken token)
         {
-            /*lock(lockObj)
+
+            OverworldEvent.WaitOne();
+            lock (lockObj)
             {
                 if (!Executor.SwitchConnection.Connected)
                     Executor.SwitchConnection.Reset();
-            }*/
-
+            }
             //int B_Count = 0;
-            while(!token.IsCancellationRequested)
+            while (!token.IsCancellationRequested)
             {
-                while (CollideTaskRunning)                
-                    await Task.Delay(1_000, token).ConfigureAwait(false);
-                
-                OverworldTaskRunning = true;
+
                 while (!await IsOnOverworld(OverWorldOffset, token).ConfigureAwait(false))
                 {
-                    FleeFailCount++;
                     if (await IsInBattle(token).ConfigureAwait(false))
                     {
+                        FleeFailCount++;
                         if (FleeFailCount >= 5 || TeleportMode.Checked)
                             await DefeatPokemon(token).ConfigureAwait(false);
                         else
@@ -804,7 +937,7 @@ namespace PokeViewer.NET.SubForms
                     }
                     else
                     {
-                        await Click(B, 1_000, token).ConfigureAwait(false);
+                        await Click(B, 0_600, token).ConfigureAwait(false);
                         //B_Count++;
                         /*if (B_Count >= 5)
                             break;*/
@@ -812,9 +945,14 @@ namespace PokeViewer.NET.SubForms
                     await RefreshOverworldOffset(token).ConfigureAwait(false);
                 }
                 //B_Count = 0;
-                OverworldTaskRunning = false;
-                if(CollideTaskComplete)
+                await Task.Delay(0_500, token).ConfigureAwait(false);
+                if (CollideTaskComplete)
                     return;
+                else
+                {
+                    ScanEvent.Set();
+                    OverworldEvent.WaitOne();
+                }
             }
         }
 
@@ -825,9 +963,7 @@ namespace PokeViewer.NET.SubForms
         }
         private async Task<bool> OverworldStateChanged(CancellationToken token)
         {
-            CollideTaskRunning = true;
-            while (OverworldTaskRunning)
-                await Task.Delay(1_000, token).ConfigureAwait(false);
+            ScanEvent.WaitOne();
             var state = await GetOverworldState(OverWorldOffset, token).ConfigureAwait(false);
             await Click(X, 2_000, token).ConfigureAwait(false);
             return state != await GetOverworldState(OverWorldOffset, token).ConfigureAwait(false);
@@ -846,97 +982,73 @@ namespace PokeViewer.NET.SubForms
         }
         private async Task DisCollide(CancellationToken token)
         {
-            if (!InWater.Checked)
+            if (!GetCheckState(InWater))
             {
-                CollideTaskRunning = true;
-                while (OverworldTaskRunning)
-                    await Task.Delay(1_000, token).ConfigureAwait(false);
                 if (!await PlayerNotOnMount(token).ConfigureAwait(false))                
                     await Click(PLUS, 0_800, token).ConfigureAwait(false);                                    
                 var CheckCount = 0;
                 while (!await PlayerNotOnMount(token).ConfigureAwait(false))
                 {
-                    CollideTaskRunning = false;
-                    await Task.Delay(0_500, token).ConfigureAwait(false);
-                    CollideTaskRunning = true;
-                    while (OverworldTaskRunning)
-                        await Task.Delay(1_000, token).ConfigureAwait(false);
+                    OverworldEvent.Set();
+                    ScanEvent.WaitOne();
                     if (await PlayerNotOnMount(token).ConfigureAwait(false))
                         break;
                     await Click(PLUS, 0_800, token).ConfigureAwait(false);
                     if (await PlayerNotOnMount(token).ConfigureAwait(false))
                         break;
-                    CollideTaskRunning = false;
+                    OverworldEvent.Set();
                     CheckCount++;
-                    await Task.Delay(0_500, token).ConfigureAwait(false);
-                    
+                    ScanEvent.WaitOne();
+
                     if (CheckCount >= 2)
                     {
-                        CollideTaskRunning = true;
-                        while (OverworldTaskRunning)
-                            await Task.Delay(1_000, token).ConfigureAwait(false);
-                        await RefreshOnMountOffset(token).ConfigureAwait(false);
-                        CollideTaskRunning = false;                        
+                        await RefreshOnMountOffset(token).ConfigureAwait(false);                                               
                     }
-                    CollideTaskRunning = true;
-                    while (OverworldTaskRunning)
-                        await Task.Delay(1_000, token).ConfigureAwait(false);
+                    OverworldEvent.Set();
+                    ScanEvent.WaitOne();
                 }
-                CollideTaskRunning = false;
+                OverworldEvent.Set();
             }
             await Reposition(token).ConfigureAwait(false);
         }
         private async Task DisCollideOnly(CancellationToken token)
         {
-            CollideTaskRunning = true;
-            while (OverworldTaskRunning)
-                await Task.Delay(1_000, token).ConfigureAwait(false);
             if (!await PlayerNotOnMount(token).ConfigureAwait(false))            
                 await Click(PLUS, 0_800, token).ConfigureAwait(false);            
             var CheckCount = 0;
             while (!await PlayerNotOnMount(token).ConfigureAwait(false))
             {
-                CollideTaskRunning = false;
-                await Task.Delay(0_500, token).ConfigureAwait(false);
-                CollideTaskRunning = true;
-                while (OverworldTaskRunning)
-                    await Task.Delay(1_000, token).ConfigureAwait(false);
+                OverworldEvent.Set();
+                ScanEvent.WaitOne();
                 if (await PlayerNotOnMount(token).ConfigureAwait(false))
                     break;
                 await Click(PLUS, 0_800, token).ConfigureAwait(false);
                 if (await PlayerNotOnMount(token).ConfigureAwait(false))
                     break;
+                OverworldEvent.Set();
                 CheckCount++;
-                CollideTaskRunning = false;
-                await Task.Delay(0_500, token).ConfigureAwait(false);
-
+                ScanEvent.WaitOne();
+                
                 if (CheckCount >= 1)
                 {
-                    CollideTaskRunning = true;
-                    while (OverworldTaskRunning)
-                        await Task.Delay(1_000, token).ConfigureAwait(false);
-                    await RefreshOnMountOffset(token).ConfigureAwait(false);
-                    CollideTaskRunning = false;                    
+                    await RefreshOnMountOffset(token).ConfigureAwait(false);                                       
                 }
                 if (CheckCount >= 3)
                     break;
-                CollideTaskRunning = true;
-                while (OverworldTaskRunning)
-                    await Task.Delay(1_000, token).ConfigureAwait(false);
+                OverworldEvent.Set();
+                ScanEvent.WaitOne();
             }
-            CollideTaskRunning = false;
+            OverworldEvent.Set();
         }
         private async Task CollideReadPro(CancellationToken token)
         {
             await Collide(token).ConfigureAwait(false);
-            CollideTaskRunning = true;
-            while (OverworldTaskRunning)
-                await Task.Delay(1_000, token).ConfigureAwait(false);
+            ScanEvent.WaitOne();
             var coords = await Executor.SwitchConnection.PointerPeek(12, Offsets.CollisionPointer, token).ConfigureAwait(false);
-            CollideTaskRunning = false;
             coordx = $"{BitConverter.ToSingle(coords.AsSpan()[..4])}";
             coordy = $"{BitConverter.ToSingle(coords.AsSpan()[4..8])}";
             coordz = $"{BitConverter.ToSingle(coords.AsSpan()[8..12])}";
+            OverworldEvent.Set();
         }
         private (string, string, string) CoordReader(byte[]? coords)
         {
@@ -963,30 +1075,29 @@ namespace PokeViewer.NET.SubForms
                 y += 80;
             WriteSingleLittleEndian(X1.AsSpan()[4..], y);
 
-            CollideTaskRunning = true;
-            while (OverworldTaskRunning)
-                await Task.Delay(1_000, token).ConfigureAwait(false);
+            ScanEvent.WaitOne();
             for (int i = 0; i < 15; i++)
                 await Executor.SwitchConnection.PointerPoke(X1, Offsets.CollisionPointer, token).ConfigureAwait(false);
-            CollideTaskRunning = false;
-            await Task.Delay(0_500, token).ConfigureAwait(false);
+            OverworldEvent.Set();
+            ScanEvent.WaitOne();
             
             if (outbreakmode)
             {
                 await Task.Delay(2_500).ConfigureAwait(false);
-                CollideTaskRunning = true;
-                while (OverworldTaskRunning)
-                    await Task.Delay(1_000, token).ConfigureAwait(false);
-                await Click(B, 19_000, token).ConfigureAwait(false);
-                CollideTaskRunning = false;                
+                OverworldEvent.Set();
+                ScanEvent.WaitOne();
+                await Click(B, 19_000, token).ConfigureAwait(false);                         
             }
 
-            CollideTaskRunning = true;
             await Task.Delay(5_000, token).ConfigureAwait(false);
-            CollideTaskRunning = false;
+            OverworldEvent.Set();
+            ScanEvent.WaitOne();
             await DisCollide(token).ConfigureAwait(false);
-            if (checkBox7.Checked)
-                checkBox7.Checked = false;
+            Invoke(() =>
+            {
+                if (checkBox7.Checked)
+                    checkBox7.Checked = false;
+            });
         }
         private async Task TeleportToMatch(byte[]? cp, CancellationToken token)
         {
@@ -1002,15 +1113,11 @@ namespace PokeViewer.NET.SubForms
         }
         private async Task<(Single, Single, Single)> PlayerCoordRead(CancellationToken token)
         {
-            CollideTaskRunning = true;
-            await Task.Delay(0_500, token).ConfigureAwait(false);
-            while (OverworldTaskRunning)
-                await Task.Delay(1_000, token).ConfigureAwait(false);
-            var coords = await Executor.SwitchConnection.PointerPeek(12, Offsets.CollisionPointer, token).ConfigureAwait(false);
-            CollideTaskRunning = false;
+            var coords = await Executor.SwitchConnection.PointerPeek(12, Offsets.CollisionPointer, token).ConfigureAwait(false);            
             Single x = BitConverter.ToSingle(coords.AsSpan()[..4]);
             Single y = BitConverter.ToSingle(coords.AsSpan()[4..8]);
             Single z = BitConverter.ToSingle(coords.AsSpan()[8..12]);
+            OverworldEvent.Set();
             return (x, y, z);
         }
         private async Task PrepareToPicnic(string x, string Y, string z, CancellationToken token)
@@ -1021,21 +1128,24 @@ namespace PokeViewer.NET.SubForms
             var TeleportCoords = (coordx, coordy, coordz).ToTuple();
 
             var PlayerCoords = (await PlayerCoordRead(token).ConfigureAwait(false)).ToTuple();
-            if (Math.Abs(TeleportCoords.Item1 - PlayerCoords.Item1) > (TeleportMode.Checked ? 5 : 0.5) || Math.Abs(TeleportCoords.Item2 - PlayerCoords.Item2) > (TeleportMode.Checked ? 5 : 0.5) || Math.Abs(TeleportCoords.Item3 - PlayerCoords.Item3) > (TeleportMode.Checked ? 5 : 0.5))
+            ScanEvent.WaitOne();
+            bool Teleport = false;
+            if (InvokeRequired)
+                Invoke(() => Teleport = TeleportMode.Checked);
+            else
+                Teleport = TeleportMode.Checked;
+            if (Math.Abs(TeleportCoords.Item1 - PlayerCoords.Item1) > (Teleport ? 5 : 0.5) || Math.Abs(TeleportCoords.Item2 - PlayerCoords.Item2) > (Teleport ? 5 : 0.5) || Math.Abs(TeleportCoords.Item3 - PlayerCoords.Item3) > (Teleport ? 5 : 0.5))
             {
-                CollideTaskRunning = true;
-                while (OverworldTaskRunning)
-                    await Task.Delay(1_000, token).ConfigureAwait(false);
                 await RefreshOnMountOffset(token).ConfigureAwait(false);
-                CollideTaskRunning = false;
                 await CollideToSpot(x, Y, z, token).ConfigureAwait(false);
-                await Task.Delay(1_000, token).ConfigureAwait(false);   
+                ScanEvent.WaitOne();
                 await DisCollideOnly(token).ConfigureAwait(false);
                 await Reposition(token).ConfigureAwait(false);
-                await Task.Delay(1_000, token).ConfigureAwait(false);
+                ScanEvent.WaitOne();
                 await PrepareToPicnic(x, Y, z, token).ConfigureAwait(false);
                 return;
             }
+            OverworldEvent.Set();
             CollideTaskComplete = true;
         }
         private async Task CollideToSpot(string x, string Y, string z, CancellationToken token)
@@ -1056,29 +1166,24 @@ namespace PokeViewer.NET.SubForms
                 y += 20;
                 WriteSingleLittleEndian(X1.AsSpan()[4..], y);
 
-                CollideTaskRunning = true;
-                while (OverworldTaskRunning)
-                    await Task.Delay(1_000, token).ConfigureAwait(false);
+                ScanEvent.WaitOne();
                 for (int i = 0; i < 15; i++)
                     await Executor.SwitchConnection.PointerPoke(X1, Offsets.CollisionPointer, token).ConfigureAwait(false);
                 var PlayerCoords = (await PlayerCoordRead(token).ConfigureAwait(false)).ToTuple();
                 while (Math.Abs(TeleportCoords.Item1 - PlayerCoords.Item1) > 5 || Math.Abs(TeleportCoords.Item2 - PlayerCoords.Item2) > 5 || Math.Abs(TeleportCoords.Item3 - PlayerCoords.Item3) > 5)
                 {
-                    await Task.Delay(1_000, token).ConfigureAwait(false);
-                    CollideTaskRunning = true;
-                    while (OverworldTaskRunning)
-                        await Task.Delay(1_000, token).ConfigureAwait(false);
+                    ScanEvent.WaitOne();
                     for (int i = 0; i < 15; i++)
                         await Executor.SwitchConnection.PointerPoke(X1, Offsets.CollisionPointer, token).ConfigureAwait(false);
                     PlayerCoords = (await PlayerCoordRead(token).ConfigureAwait(false)).ToTuple();                    
                 }
-                CollideTaskRunning = true;
-                await Task.Delay(!TeleportMode.Checked ? 2_500 : 4_000, token).ConfigureAwait(false);
-                CollideTaskRunning = false;
+                ScanEvent.WaitOne();
+                await Task.Delay(!GetCheckState(TeleportMode) ? 2_500 : 4_000, token).ConfigureAwait(false);
+                OverworldEvent.Set();
             }
             else
             {
-                if (string.IsNullOrEmpty(XCoord.Text) || string.IsNullOrEmpty(YCoord.Text) || string.IsNullOrEmpty(ZCoord.Text))
+                if (Invoke(() => string.IsNullOrEmpty(XCoord.Text) || string.IsNullOrEmpty(YCoord.Text) || string.IsNullOrEmpty(ZCoord.Text)))
                 {
                     MessageBox.Show("Scan location coord is empty. read Scan location coord!");
                     await CollideRead(token).ConfigureAwait(false);
@@ -1122,21 +1227,45 @@ namespace PokeViewer.NET.SubForms
             await Executor.SwitchConnection.SendAsync(SwitchCommand.Click(b, true), token).ConfigureAwait(false);
             await Task.Delay(delay, token).ConfigureAwait(false);
         }
-        private bool SandwichmodeValid(int Mode) => Mode >= 0 && Mode < SandwichMode.Items.Count;
-        private bool Sandwichtypevalid(int Type) => Type >= 0 && Type < poketype.Items.Count;
-        private bool SandwichTypeNotChanged() => Sandwichtypevalid(PreType) && poketype.SelectedIndex == PreType && Sandwichtypevalid(poketype.SelectedIndex);
-        private bool SandwichModeNotChanged() => SandwichmodeValid(PreMode) && SandwichMode.SelectedIndex == PreMode && SandwichmodeValid(SandwichMode.SelectedIndex);
+        private bool SandwichmodeValid(int Mode)
+        {
+            if (InvokeRequired)
+                return Invoke(() => Mode >= 0 && Mode < SandwichMode.Items.Count);
+            else
+                return Mode >= 0 && Mode < SandwichMode.Items.Count;
+        }
+        private bool Sandwichtypevalid(int Type)
+        {
+            if (InvokeRequired)
+                return Invoke(() => Type >= 0 && Type < poketype.Items.Count);
+            else
+                return Type >= 0 && Type < poketype.Items.Count;
+        }
+        private bool SandwichTypeNotChanged()
+        {
+            if(InvokeRequired)
+                return Sandwichtypevalid(PreType) && Invoke(() => poketype.SelectedIndex == PreType) && Sandwichtypevalid(Invoke(() => poketype.SelectedIndex));
+            else
+                return Sandwichtypevalid(PreType) && poketype.SelectedIndex == PreType && Sandwichtypevalid(poketype.SelectedIndex);
+        }
+        private bool SandwichModeNotChanged()
+        {
+            if (InvokeRequired)
+                return SandwichmodeValid(PreMode) && Invoke(() => SandwichMode.SelectedIndex == PreMode) && SandwichmodeValid(Invoke(() => SandwichMode.SelectedIndex));
+            else
+                return SandwichmodeValid(PreMode) && SandwichMode.SelectedIndex == PreMode && SandwichmodeValid(SandwichMode.SelectedIndex);
+        }
         private async Task<bool> SetUpItems(MoveType Type, CancellationToken token)
         {
             if (Type <= MoveType.Any || Type > MoveType.Fairy)
                 return false;
-            if (SandwichMode.SelectedIndex < 0 || SandwichMode.SelectedIndex >= SandwichMode.Items.Count)
+            if (Invoke(() => SandwichMode.SelectedIndex) < 0 || Invoke(() => SandwichMode.SelectedIndex >= SandwichMode.Items.Count))
                 return false;
-            if (ScanButton.Enabled)
+            if (Invoke(() => ScanButton.Enabled))
                 DisableOptions();
             TextBox[] ItemList = { eggviewer.Item1Value, eggviewer.Item2Value, eggviewer.Item3Value, eggviewer.Item4Value, eggviewer.Item5Value, eggviewer.Item6Value };
             NumericUpDown[] CountList = { eggviewer.Item1Count, eggviewer.Item2Count, eggviewer.Item3Count, eggviewer.Item4Count, eggviewer.Item5Count, eggviewer.Item6Count };
-            eggviewer.Initialize(ItemList, CountList);
+            Invoke(() => eggviewer.Initialize(ItemList, CountList));
             List<(int, int, int, bool)> EatItem = [];
             List<(int, int, int, bool)> EatItem2 = [];
             var pouch = await itemStructure.GetPouches(token).ConfigureAwait(false);
@@ -1150,9 +1279,9 @@ namespace PokeViewer.NET.SubForms
                 return false;
             }
             eggviewer.EatItem1 = EatItem;
-            if (!AllMysticaSalt.ContainsKey(SandwichMode.SelectedIndex))
-                SandwichMode.SelectedIndex = 0;
-            var AllEatItemDict = AllMysticaSalt[SandwichMode.SelectedIndex];
+            if (!AllMysticaSalt.ContainsKey(Invoke(() => SandwichMode.SelectedIndex)))
+                Invoke(() => SandwichMode.SelectedIndex = 0);
+            var AllEatItemDict = AllMysticaSalt[Invoke(() => SandwichMode.SelectedIndex)];
             if (!AllEatItemDict.ContainsKey(Type))
                 Type = MoveType.Any;
             var EatItemList = AllEatItemDict[Type];
@@ -1172,16 +1301,21 @@ namespace PokeViewer.NET.SubForms
             {
                 if (i >= 3)
                     break;
-
-                ItemList[i].Text = eggviewer.EatItem1[i].Item3.ToString();
-                CountList[i].Value = eggviewer.EatItem1[i].Item2;
+                Invoke(() =>
+                { 
+                    ItemList[i].Text = eggviewer.EatItem1[i].Item3.ToString();
+                    CountList[i].Value = eggviewer.EatItem1[i].Item2;
+                });
             }
             for (int i = 0; i < eggviewer.EatItem2.Count; i++)
             {
-                if (i + 3 >= ItemList.Length) break;
+                if (i + 3 >= Invoke(() =>ItemList.Length)) break;
 
-                ItemList[i + 3].Text = eggviewer.EatItem2[i].Item3.ToString();
-                CountList[i + 3].Value = eggviewer.EatItem2[i].Item2;
+                Invoke(() =>
+                {                    
+                    ItemList[i + 3].Text = eggviewer.EatItem2[i].Item3.ToString();
+                    CountList[i + 3].Value = eggviewer.EatItem2[i].Item2;
+                });
             }
             return true;
         }
@@ -1207,15 +1341,35 @@ namespace PokeViewer.NET.SubForms
             TeraRaidBlockOffset = await Executor.SwitchConnection.PointerAll(Offsets.RaidBlockPointerP, token).ConfigureAwait(false);
             if (!ReConnect || seed == 0)
                 seed = BitConverter.ToUInt64(await Executor.SwitchConnection.ReadBytesAbsoluteAsync(TeraRaidBlockOffset, 8, token).ConfigureAwait(false), 0);
-            if (!ReConnect || (OutbreakSpeciesBox.SelectedIndex >= 0 && TargetMon <= 0))
+            if (InvokeRequired)
             {
-                TargetMon = OutbreakSpeciesBox.SelectedIndex < 0 ? (ushort)0 : (ushort)SpeciesList.IndexOf((string)OutbreakSpeciesBox.Items[OutbreakSpeciesBox.SelectedIndex]!);
-                if (!FormCombo.Visible)
-                    TargetForm = 0;
-                else
+                Invoke(() =>
                 {
-                    var formslist = FormConverter.GetFormList(TargetMon, TypesList, FormsList, GenderList, EntityContext.Gen9).ToList();
-                    TargetForm = (byte)formslist.IndexOf((string)FormCombo.Items[FormCombo.SelectedIndex]!);
+                    if (!ReConnect || (OutbreakSpeciesBox.SelectedIndex >= 0 && TargetMon <= 0))
+                    {
+                        TargetMon = OutbreakSpeciesBox.SelectedIndex < 0 ? (ushort)0 : (ushort)SpeciesList.IndexOf((string)OutbreakSpeciesBox.Items[OutbreakSpeciesBox.SelectedIndex]!);
+                        if (!FormCombo.Visible)
+                            TargetForm = 0;
+                        else
+                        {
+                            var formslist = FormConverter.GetFormList(TargetMon, TypesList, FormsList, GenderList, EntityContext.Gen9).ToList();
+                            TargetForm = (byte)formslist.IndexOf((string)FormCombo.Items[FormCombo.SelectedIndex]!);
+                        }
+                    }
+                });
+            }
+            else
+            {
+                if (!ReConnect || (OutbreakSpeciesBox.SelectedIndex >= 0 && TargetMon <= 0))
+                {
+                    TargetMon = OutbreakSpeciesBox.SelectedIndex < 0 ? (ushort)0 : (ushort)SpeciesList.IndexOf((string)OutbreakSpeciesBox.Items[OutbreakSpeciesBox.SelectedIndex]!);
+                    if (!FormCombo.Visible)
+                        TargetForm = 0;
+                    else
+                    {
+                        var formslist = FormConverter.GetFormList(TargetMon, TypesList, FormsList, GenderList, EntityContext.Gen9).ToList();
+                        TargetForm = (byte)formslist.IndexOf((string)FormCombo.Items[FormCombo.SelectedIndex]!);
+                    }
                 }
             }
             long unixTime = 0;
@@ -1224,9 +1378,9 @@ namespace PokeViewer.NET.SubForms
             ulong PreviousSaved = 0;
             if (!token.IsCancellationRequested)
             {
-                if (!NonSaveMode.Checked)
+                if (!GetCheckState(NonSaveMode))
                 {
-                    if (OutbreakType.SelectedIndex is not 0 && (!await IsOnDesiredMap(token).ConfigureAwait(false) || !await OutbreakFound(token).ConfigureAwait(false)))
+                    if (Invoke(() =>OutbreakType.SelectedIndex) is not 0 && (!await IsOnDesiredMap(token).ConfigureAwait(false) || !await OutbreakFound(token).ConfigureAwait(false)))
                     {
                         await Click(HOME, 1_000, token).ConfigureAwait(false);
                         MessageBox.Show("Target Outbreak is not found.");
@@ -1234,7 +1388,7 @@ namespace PokeViewer.NET.SubForms
                         EnableOptions();
                         return;
                     }
-                    info = TimeZoneInfo.FindSystemTimeZoneById((string)TimeZoneCombo.SelectedValue!);
+                    Invoke(() => info = TimeZoneInfo.FindSystemTimeZoneById((string)TimeZoneCombo.SelectedValue!));
                     unixTime = await GetUnixTime(token).ConfigureAwait(false);
                     if (!ReConnect || SetTime <= 0)
                     {
@@ -1247,7 +1401,7 @@ namespace PokeViewer.NET.SubForms
                     if (lastsavedinit == 0)
                         lastsavedinit = datapack.Item2;
                     PreviousSaved = datapack.Item1;
-                    ConnectionBox.Text += $"{Environment.NewLine}ReConnect State: {ReConnect}";
+                    Invoke(() => ConnectionBox.Text += $"{Environment.NewLine}ReConnect State: {ReConnect}");
                     if (!ReConnect || DateCycleTime <= 0)
                     {
                         DateCycleTime = (await GetLastDateCycle(0, token).ConfigureAwait(false)).Item1;
@@ -1261,10 +1415,10 @@ namespace PokeViewer.NET.SubForms
                         EnableOptions();
                         return;
                     }
-                    ConnectionBox.Text += $"{Environment.NewLine}SetTime: {(SetTime > 0 ? SetDateTime.ToString("yyyy/MM/dd HH:mm:ss") : SetTime)}{Environment.NewLine}Enrollment Date: {EnrollmentDate.ToString("yyyy/MM/dd HH:mm:ss")}{Environment.NewLine}Original Seed: {seed:X}";
-                    TimeText.Text = $"{TimeZoneInfo.ConvertTimeFromUtc(epoch.AddSeconds(unixTime), info): yyyy/MM/dd HH:mm:ss}";
-                    TargetCoords = (Single.Parse(XCoord.Text), Single.Parse(YCoord.Text), Single.Parse(ZCoord.Text));
-                    if (TeleportMode.Checked)
+                    //ConnectionBox.Text += $"{Environment.NewLine}SetTime: {(SetTime > 0 ? SetDateTime.ToString("yyyy/MM/dd HH:mm:ss") : SetTime)}{Environment.NewLine}Enrollment Date: {EnrollmentDate.ToString("yyyy/MM/dd HH:mm:ss")}{Environment.NewLine}Original Seed: {seed:X}";
+                    Invoke(() =>TimeText.Text = $"{TimeZoneInfo.ConvertTimeFromUtc(epoch.AddSeconds(unixTime), info): yyyy/MM/dd HH:mm:ss}");
+                    Invoke(() => TargetCoords = (Single.Parse(XCoord.Text), Single.Parse(YCoord.Text), Single.Parse(ZCoord.Text)));
+                    if (GetCheckState(TeleportMode))
                     {
                         if (!ReConnect)
                         {
@@ -1272,87 +1426,163 @@ namespace PokeViewer.NET.SubForms
                             {
                                 result1 = MessageBox.Show(this, "Teleport Location is not empty. continue in same location?", "Teleport location prompt", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
                             }
-                            if (!string.IsNullOrEmpty(XCoord.Text) && !string.IsNullOrEmpty(YCoord.Text) && !string.IsNullOrEmpty(ZCoord.Text))
+                            if (!string.IsNullOrEmpty(Invoke(() => XCoord.Text)) && !string.IsNullOrEmpty(Invoke(() => YCoord.Text)) && !string.IsNullOrEmpty(Invoke(() => ZCoord.Text)))
                             {
                                 result2 = MessageBox.Show(this, "Scan Location is not empty. continue in same location?", "Scan location prompt", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
                             }
-                            if (result2 == DialogResult.No || string.IsNullOrEmpty(XCoord.Text) || string.IsNullOrEmpty(YCoord.Text) || string.IsNullOrEmpty(ZCoord.Text))
-                                await CollideRead(token).ConfigureAwait(false);
+                            if (result2 == DialogResult.No || string.IsNullOrEmpty(Invoke(() => XCoord.Text)) || string.IsNullOrEmpty(Invoke(() => YCoord.Text)) || string.IsNullOrEmpty(Invoke(() => ZCoord.Text)))
+                            {
+                                Task CollideTask = Task.Run(async () => { await CollideRead(token).ConfigureAwait(false); CollideTaskComplete = true; });
+                                ResetTaskStatus();
+                                await Task.WhenAll(CollideTask, RecoverToOverworld(token), GetTaskStatus(token)).ConfigureAwait(false);
+                            }
                             if (result1 == DialogResult.No || string.IsNullOrEmpty(coordx) || string.IsNullOrEmpty(coordy) || string.IsNullOrEmpty(coordz))
                             {
                                 MessageBox.Show(this, "Scan location coord is read! Go to Teleport location.", "Teleport Location Search", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                                await CollideReadPro(token).ConfigureAwait(false);
+                                Task CollideTask = Task.Run(async () => { await CollideReadPro(token).ConfigureAwait(false); CollideTaskComplete = true; });
+                                ResetTaskStatus();
+                                await Task.WhenAll(CollideTask, RecoverToOverworld(token), GetTaskStatus(token)).ConfigureAwait(false);
                             }
                         }
-                        Task CollideTaskScan = Task.Run(async() => { await CollideToSpot(XCoord.Text, YCoord.Text, ZCoord.Text, token).ConfigureAwait(false); CollideTaskComplete = true; });
+                        Task CollideTaskScan = Task.Run(async() => { await CollideToSpot(Invoke(() => XCoord.Text), Invoke(() => YCoord.Text), Invoke(() => ZCoord.Text), token).ConfigureAwait(false); CollideTaskComplete = true; });
                         Task CollideTaskTeleport = Task.Run(async() => { await CollideToSpot(coordx, coordy, coordz, token).ConfigureAwait(false); CollideTaskComplete = true; });
                         Task OverworldTask = RecoverToOverworld(token);
                         ResetTaskStatus();
-                        if (!EatOnStart.Checked)
-                            await Task.WhenAll(CollideTaskScan, OverworldTask).ConfigureAwait(false);
-                        else if (ScanLocationCannotPicnic.Checked)
-                            await Task.WhenAll(CollideTaskTeleport, OverworldTask).ConfigureAwait(false);
+                        if (!GetCheckState(EatOnStart))
+                            await Task.WhenAll(CollideTaskScan, OverworldTask, GetTaskStatus(token)).ConfigureAwait(false);
+                        else if (GetCheckState(ScanLocationCannotPicnic))
+                            await Task.WhenAll(CollideTaskTeleport, OverworldTask, GetTaskStatus(token)).ConfigureAwait(false);
                         else
-                            await Task.WhenAll(CollideTaskScan, OverworldTask).ConfigureAwait(false);
-                        if (EatOnStart.Checked)
+                            await Task.WhenAll(CollideTaskScan, OverworldTask, GetTaskStatus(token)).ConfigureAwait(false);
+                        if (GetCheckState(EatOnStart))
                         {
                             await RefreshOnMountOffset(token).ConfigureAwait(false);
                             ResetTaskStatus();
-                            await Task.WhenAll(DisCollideReposite(token), RecoverToOverworld(token)).ConfigureAwait(false);
-                        }
-                        Task PicnicTask = PrepareToPicnic((!EatOnStart.Checked ? XCoord.Text : ScanLocationCannotPicnic.Checked ? coordx : XCoord.Text), (!EatOnStart.Checked ? YCoord.Text : ScanLocationCannotPicnic.Checked ? coordy : YCoord.Text), (!EatOnStart.Checked ? ZCoord.Text : ScanLocationCannotPicnic.Checked ? coordz : ZCoord.Text), token);
-                        ResetTaskStatus();
-                        await Task.WhenAll(PicnicTask, RecoverToOverworld(token)).ConfigureAwait(false);
-                        await Task.Delay(4_000, token).ConfigureAwait(false);
+                            await Task.WhenAll(DisCollideReposite(token), RecoverToOverworld(token), GetTaskStatus(token)).ConfigureAwait(false);
+                        }                        
                     }
-                    if (!eggviewer.HoldIngredients.Checked)
-                        eggviewer.HoldIngredients.Checked = true;
+                    Task PicnicTask = PrepareToPicnic((!GetCheckState(EatOnStart) ? Invoke(() => XCoord.Text) : GetCheckState(ScanLocationCannotPicnic) ? coordx : Invoke(() => XCoord.Text)), (!GetCheckState(EatOnStart) ? Invoke(() => YCoord.Text) : GetCheckState(ScanLocationCannotPicnic) ? coordy : Invoke(() => YCoord.Text)), (!GetCheckState(EatOnStart) ? Invoke(() => ZCoord.Text) : GetCheckState(ScanLocationCannotPicnic) ? coordz : Invoke(() => ZCoord.Text)), token);
+                    ResetTaskStatus();
+                    await Task.WhenAll(PicnicTask, RecoverToOverworld(token), GetTaskStatus(token)).ConfigureAwait(false);
+                    bool Teleport = false;
+                    if (InvokeRequired)
+                    {
+                        Invoke(() =>
+                        {
+                            Teleport = TeleportMode.Checked;
+                            if (!eggviewer.HoldIngredients.Checked)
+                                eggviewer.HoldIngredients.Checked = true;
+                        });
+                    }
+                    else
+                    {
+                        Teleport = TeleportMode.Checked;
+                        if (!eggviewer.HoldIngredients.Checked)
+                            eggviewer.HoldIngredients.Checked = true;
+                    }
+                    await Task.Delay(Teleport ? 4_000 : 2_000, token).ConfigureAwait(false);
                     bool TypeChangeSuccess = ReConnect;
                     bool ModeChangeSuccess = ReConnect;
                     if (!ReConnect && SandwichTypeNotChanged())
                     {
-                        DialogResult dialogResult = MessageBox.Show(this, "Seleted shiny power type is same as previous one. change?", "Shiny power type prompt", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
-                        if (dialogResult == DialogResult.Yes)
+                        if (InvokeRequired)
                         {
-                            poketype.SelectedIndex = -1;
-                            EnableOptions();
+                            Invoke(() =>
+                            {
+                                DialogResult dialogResult = MessageBox.Show(this, "Seleted shiny power type is same as previous one. change?", "Shiny power type prompt", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+                                if (dialogResult == DialogResult.Yes)
+                                {
+                                    poketype.SelectedIndex = -1;
+                                    EnableOptions();
+                                }
+                                else
+                                    TypeChangeSuccess = true;
+                            });                            
                         }
                         else
-                            TypeChangeSuccess = true;
+                        {
+                            DialogResult dialogResult = MessageBox.Show(this, "Seleted shiny power type is same as previous one. change?", "Shiny power type prompt", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+                            if (dialogResult == DialogResult.Yes)
+                            {
+                                poketype.SelectedIndex = -1;
+                                EnableOptions();
+                            }
+                            else
+                                TypeChangeSuccess = true;
+                        }
                     }
                     if (!ReConnect && SandwichModeNotChanged())
                     {
-                        DialogResult dialogResult = MessageBox.Show(this, "Seleted shiny power mode is same as previous one. change?", "Shiny power mode prompt", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
-                        if (dialogResult == DialogResult.Yes)
+                        if(InvokeRequired)
                         {
-                            SandwichMode.SelectedIndex = -1;
-                            if (!TypeChangeSuccess)
-                                EnableOptions();
+                            Invoke(() =>
+                            {
+                                DialogResult dialogResult = MessageBox.Show(this, "Seleted shiny power mode is same as previous one. change?", "Shiny power mode prompt", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+                                if (dialogResult == DialogResult.Yes)
+                                {
+                                    SandwichMode.SelectedIndex = -1;
+                                    if (!TypeChangeSuccess)
+                                        EnableOptions();
+                                }
+                                else
+                                    ModeChangeSuccess = true;
+                            });
                         }
                         else
-                            ModeChangeSuccess = true;
+                        {
+                            DialogResult dialogResult = MessageBox.Show(this, "Seleted shiny power mode is same as previous one. change?", "Shiny power mode prompt", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+                            if (dialogResult == DialogResult.Yes)
+                            {
+                                SandwichMode.SelectedIndex = -1;
+                                if (!TypeChangeSuccess)
+                                    EnableOptions();
+                            }
+                            else
+                                ModeChangeSuccess = true;
+                        }                        
                     }
                     bool success = TypeChangeSuccess && ModeChangeSuccess;
-                    while (!success || !Sandwichtypevalid(poketype.SelectedIndex) || !SandwichmodeValid(SandwichMode.SelectedIndex))
+                    int PokeType = 0;
+                    int SandwichModeIndex = 0;
+                    if (InvokeRequired)
                     {
-                        success = await SetUpItems((MoveType)poketype.SelectedIndex, token).ConfigureAwait(false);
-                        if (!ScanButton.Enabled && (!Sandwichtypevalid(poketype.SelectedIndex) || !SandwichmodeValid(SandwichMode.SelectedIndex)))
+                        Invoke(() =>
+                        {
+                            PokeType = poketype.SelectedIndex;
+                            SandwichModeIndex = SandwichMode.SelectedIndex;
+                        });
+                    }
+                    else
+                    {
+                        PokeType = poketype.SelectedIndex;
+                        SandwichModeIndex = SandwichMode.SelectedIndex;
+                    }
+                    while (!success || !Sandwichtypevalid(PokeType) || !SandwichmodeValid(SandwichModeIndex))
+                    {
+                        success = await SetUpItems((MoveType)PokeType, token).ConfigureAwait(false);
+                        if (!Invoke(() =>ScanButton.Enabled) && (!Sandwichtypevalid(PokeType) || !SandwichmodeValid(SandwichModeIndex)))
                             EnableOptions();
 
-                        if (success || (!success && Sandwichtypevalid(poketype.SelectedIndex) && SandwichmodeValid(SandwichMode.SelectedIndex)))
+                        if (success || (!success && Sandwichtypevalid(PokeType) && SandwichmodeValid(SandwichModeIndex)))
                         {
-                            if (string.IsNullOrEmpty(poketype.Text))
-                                poketype.Text = poketype.Items[poketype.SelectedIndex]!.ToString();
-                            if (string.IsNullOrEmpty(SandwichMode.Text))
-                                SandwichMode.Text = SandwichMode.Items[SandwichMode.SelectedIndex]!.ToString();
+                            Invoke(() =>
+                            {
+                                if (string.IsNullOrEmpty(poketype.Text))
+                                    poketype.Text = poketype.Items[poketype.SelectedIndex]!.ToString();
+                                if (string.IsNullOrEmpty(SandwichMode.Text))
+                                    SandwichMode.Text = SandwichMode.Items[SandwichMode.SelectedIndex]!.ToString();
+                            });
                             break;
                         }
-                        await Task.Delay(0_500).ConfigureAwait(false);
+                        await Task.Delay(0_500, token).ConfigureAwait(false);
                         waitcount++;
                         if (waitcount > 30)
                         {
-                            poketype.SelectedIndex = 8;
-                            SandwichMode.SelectedIndex = 0;
+                            Invoke(() =>
+                            {
+                                poketype.SelectedIndex = 8;
+                                SandwichMode.SelectedIndex = 0;
+                            });
                             PreType = 8;
                             PreMode = 0;
                         }
@@ -1365,10 +1595,13 @@ namespace PokeViewer.NET.SubForms
                     }
                     if (waitcount <= 30)
                     {
-                        PreType = !Sandwichtypevalid(poketype.SelectedIndex) ? -1 : poketype.SelectedIndex;
-                        PreMode = !SandwichmodeValid(SandwichMode.SelectedIndex) ? -1 : SandwichMode.SelectedIndex;
+                        Invoke(() =>
+                        {
+                            PreType = !Sandwichtypevalid(poketype.SelectedIndex) ? -1 : poketype.SelectedIndex;
+                            PreMode = !SandwichmodeValid(SandwichMode.SelectedIndex) ? -1 : SandwichMode.SelectedIndex;
+                        });
                     }
-                    if (EatOnStart.Checked)
+                    if (GetCheckState(EatOnStart))
                     {
                         await RefreshOnMountOffset(token).ConfigureAwait(false);
                         await OpenPicnic(token).ConfigureAwait(false);
@@ -1376,24 +1609,32 @@ namespace PokeViewer.NET.SubForms
                         if (!Check.Item1)
                         {
                             await Click(HOME, 1_000, token).ConfigureAwait(false);
-                            MessageBox.Show(this, Check.Item2, "Sandwich Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                            if (InvokeRequired)
+                                Invoke(() => MessageBox.Show(this, Check.Item2, "Sandwich Error", MessageBoxButtons.OK, MessageBoxIcon.Error));
+                            else
+                                MessageBox.Show(this, Check.Item2, "Sandwich Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                             EnableOptions();
                             return;
                         }
                         ResetTaskStatus();
                         Task PicnicClose = Task.Run(async () => { await ClosePicnic(token).ConfigureAwait(false); CollideTaskComplete = true; });
-                        await Task.WhenAll(PicnicClose, RecoverToOverworld(token)).ConfigureAwait(false);
-                        if (ScanLocationCannotPicnic.Checked)
+                        await Task.WhenAll(PicnicClose, RecoverToOverworld(token), GetTaskStatus(token)).ConfigureAwait(false);
+                        if (GetCheckState(ScanLocationCannotPicnic))
                         {
-                            Task CollideTask = Task.Run(async () => { await CollideToSpot(XCoord.Text, YCoord.Text, ZCoord.Text, token).ConfigureAwait(false); CollideTaskComplete = true; });
+                            Task CollideTask = Task.Run(async () => { await CollideToSpot(Invoke(() => XCoord.Text), Invoke(() => YCoord.Text), Invoke(() => ZCoord.Text), token).ConfigureAwait(false); CollideTaskComplete = true; });
                             ResetTaskStatus();
-                            await Task.WhenAll(CollideTask, RecoverToOverworld(token)).ConfigureAwait(false);
+                            await Task.WhenAll(CollideTask, RecoverToOverworld(token), GetTaskStatus(token)).ConfigureAwait(false);
                             await Task.Delay(3_000).ConfigureAwait(false);
                         }
                     }
                 }
             }
-            if (ScanButton.Enabled)
+            bool Scan = false;
+            if (InvokeRequired)
+                Invoke(() => Scan = ScanButton.Enabled);
+            else
+                Scan = ScanButton.Enabled;
+            if (Scan)
                 DisableOptions();
 
             while (!token.IsCancellationRequested)
@@ -1402,113 +1643,114 @@ namespace PokeViewer.NET.SubForms
                 var endTime = DateTime.Now + wait;
                 while (DateTime.Now < endTime)
                 {
-                    ScanButton.Text = "Scan!";
                     int matchcount = 0;
                     string species = string.Empty;
                     string caption = string.Empty;
                     List<string> Spec = new();
                     List<string> captions = new();
                     List<int> matchindex = new();
-                    for (int i = 0; i < 20; i++)
+                    Invoke(() =>
                     {
-                        boxes[i].Image = null;
-                        markboxes[i].Image = null;
-                        outputBox[i].Text = string.Empty;
-                        outputBox[i].BackColor = colors.Item1;
-                        outputBox[i].ForeColor = colors.Item2;
-                    }
+                        ScanButton.Text = "Scan!";
+                        for (int i = 0; i < 20; i++)
+                        {
+                            boxes[i].Image = null;
+                            markboxes[i].Image = null;
+                            outputBox[i].Text = string.Empty;
+                            outputBox[i].BackColor = colors.Item1;
+                            outputBox[i].ForeColor = colors.Item2;
+                        }
+                    });
 
-                    if (PicnicReset.Checked && !NonSaveMode.Checked && !initialize)
+                    if (GetCheckState(PicnicReset) && !GetCheckState(NonSaveMode) && !initialize)
                     {
                         await OpenPicnic(token).ConfigureAwait(false);
                         ResetTaskStatus();
                         Task PicnicClose = Task.Run(async () => { await ClosePicnic(token).ConfigureAwait(false); CollideTaskComplete = true; });
-                        await Task.WhenAll(PicnicClose, RecoverToOverworld(token)).ConfigureAwait(false);
+                        await Task.WhenAll(PicnicClose, RecoverToOverworld(token), GetTaskStatus(token)).ConfigureAwait(false);
                     }
-                    else if (!NonSaveMode.Checked && !initialize && !TeleportMode.Checked)
+                    else if (!GetCheckState(NonSaveMode) && !initialize && !GetCheckState(TeleportMode))
                     {
                         Task ScanTask = Task.Run(async () =>
                         {
                             await CollideReposite(token).ConfigureAwait(false);
-                            CollideTaskRunning = true;
-                            while (OverworldTaskRunning)
-                                await Task.Delay(1_000, token).ConfigureAwait(false);
+                            ScanEvent.WaitOne();
                             await SetStick(SwitchStick.LEFT, 0, -30000, 2000, token).ConfigureAwait(false);
                             await SetStick(SwitchStick.LEFT, 0, 0, 0, token).ConfigureAwait(false);
-                            CollideTaskRunning = false;
-                            await Task.Delay(0_200, token).ConfigureAwait(false);
-                            CollideTaskRunning = true;
-                            while (OverworldTaskRunning)
-                                await Task.Delay(1_000, token).ConfigureAwait(false);
+                            OverworldEvent.Set();
+                            ScanEvent.WaitOne();
                             await SetStick(SwitchStick.LEFT, 0, 30000, 2200, token).ConfigureAwait(false);
                             await SetStick(SwitchStick.LEFT, 0, 0, 100, token).ConfigureAwait(false);
-                            CollideTaskRunning = false;
+                            OverworldEvent.Set();
                             CollideTaskComplete = true;
                         });
                         ResetTaskStatus();
-                        await Task.WhenAll(ScanTask, RecoverToOverworld(token)).ConfigureAwait(false);                        
+                        await Task.WhenAll(ScanTask, RecoverToOverworld(token), GetTaskStatus(token)).ConfigureAwait(false);                        
                     }
-                    else if (!initialize && !NonSaveMode.Checked)
+                    else if (!initialize && !GetCheckState(NonSaveMode))
                     {
                         Task CollideTask = CollideToSpot(coordx, coordy, coordz, token);
-                        Task CollideScanTask = CollideToSpot(XCoord.Text, YCoord.Text, ZCoord.Text, token);
+                        Task CollideScanTask = CollideToSpot(Invoke(() => XCoord.Text), Invoke(() => YCoord.Text), Invoke(() => ZCoord.Text), token);
                         Task OverworldTask = RecoverToOverworld(token);
                         ResetTaskStatus();
-                        await Task.WhenAll(CollideTask, OverworldTask).ConfigureAwait(false);
-                        await Task.WhenAll(CollideScanTask, OverworldTask).ConfigureAwait(false);
+                        await Task.WhenAll(CollideTask, OverworldTask, GetTaskStatus(token)).ConfigureAwait(false);
+                        await Task.WhenAll(CollideScanTask, OverworldTask, GetTaskStatus(token)).ConfigureAwait(false);
                         await Task.Delay(1_000).ConfigureAwait(false);
                     }
-                    if (PicnicReset.Checked)
+                    if (GetCheckState(PicnicReset))
                     {
                         await RefreshOnMountOffset(token).ConfigureAwait(false);
                         ResetTaskStatus();
                         Task DisCollideTask = Task.Run(async() => { await DisCollideOnly(token).ConfigureAwait(false); CollideTaskComplete = true; });
-                        await Task.WhenAll(DisCollideTask, RecoverToOverworld(token)).ConfigureAwait(false);
+                        await Task.WhenAll(DisCollideTask, RecoverToOverworld(token), GetTaskStatus(token)).ConfigureAwait(false);
                     }
 ReSave:
                     ulong seed_new = 0;
-                    if (!NonSaveMode.Checked)
+                    if (!GetCheckState(NonSaveMode))
                     {
                         await Task.Delay(2_000).ConfigureAwait(false);
                         ResetTaskStatus();
-                        await Task.WhenAll(PrepareSave(TargetCoords, token), RecoverToOverworld(token)).ConfigureAwait(false);
+                        await Task.WhenAll(PrepareSave(TargetCoords, token), RecoverToOverworld(token), GetTaskStatus(token)).ConfigureAwait(false);
                         seed_new = BitConverter.ToUInt64(await Executor.SwitchConnection.ReadBytesAbsoluteAsync(TeraRaidBlockOffset, 8, token).ConfigureAwait(false), 0);
                         long CurrentTime = -1;
                         CurrentTime = await GetUnixTime(token).ConfigureAwait(false);
                         DateTime CurDateTime = TimeZoneInfo.ConvertTimeFromUtc(epoch.AddSeconds(CurrentTime), info);
-                        if ((seed != seed_new || EnrollmentDate - TimeSpan.FromMinutes(1.0) < CurDateTime) && OutbreakType.SelectedIndex > 0)
+                        if ((seed != seed_new || EnrollmentDate - TimeSpan.FromMinutes(1.0) < CurDateTime) && Invoke(() => OutbreakType.SelectedIndex) > 0)
                         {
                             LogUtil.LogText($"Target outbreak is lost! Adjust time{Environment.NewLine}Current seed(New): {seed_new:X}, Desired seed: {seed:X}");
                             await TimeAdjustToPreviousTime(seed, (ulong)unixTime, token).ConfigureAwait(false);
                             LogUtil.LogText($"Target outbreak is found! Adjusting time is success!{Environment.NewLine}Set Time: {TimeZoneInfo.ConvertTimeFromUtc(epoch.AddSeconds(unixTime), info): yyyy/MM/dd HH:mm:ss}{Environment.NewLine}Current seed(New): {seed_new:X}, Desired seed: {seed:X}");
                             init = 0;
                             lastsavedinit = 0;
-                            Reset.Invoke(new Action(() => Reset.Checked = true));
+                            Invoke(new Action(() => Reset.Checked = true));
                             await BoostShinyRolls(token).ConfigureAwait(false);
                             break;
                         }
                         Times Curtimes = Times.All_Times;
                         long LimitTime = -1;
-                        if (TimeCombo.SelectedIndex > 0 || TargetTimesList.Count > 0)
-                        {
-                            (Curtimes, LimitTime) = GetTimesFromLastDate(DateCycleTimeFix, CurrentTime, BaseTimes);
-                            LimitTime = GetTrueLimitTime(TargetTimesList, Curtimes, LimitTime);
-                        }
                         bool TimeMatch = true;
-                        if (TimeCombo.SelectedIndex > 0)
+                        Invoke(() =>
                         {
-                            TimeMatch = CheckTimesSatisfied(Curtimes);
-                        }
-                        if (TargetTimesList.Count > 0)
-                        {
-                            if (!TargetTimesList.Contains(Curtimes))
-                                TimeMatch = false;
-                        }
-                        if (TimeCombo.SelectedIndex > 0 || TargetTimesList.Count > 0)
-                        {
-                            RateBox.Text = $"Current Times: {Curtimes}" + RateBox.Text;
-                            RateBox.Text = $"Time Match: {TimeMatch}{(TimeMatch ? $"{Environment.NewLine}Scan until {TimeSpan.FromSeconds(LimitTime).TotalMinutes:0.0000} minutes later from Now!" : "")}{Environment.NewLine}" + RateBox.Text;
-                        }
+                            if (TimeCombo.SelectedIndex > 0 || TargetTimesList.Count > 0)
+                            {
+                                (Curtimes, LimitTime) = GetTimesFromLastDate(DateCycleTimeFix, CurrentTime, BaseTimes);
+                                LimitTime = GetTrueLimitTime(TargetTimesList, Curtimes, LimitTime);
+                            }
+                            if (TimeCombo.SelectedIndex > 0)
+                            {
+                                TimeMatch = CheckTimesSatisfied(Curtimes);
+                            }
+                            if (TargetTimesList.Count > 0)
+                            {
+                                if (!TargetTimesList.Contains(Curtimes))
+                                    TimeMatch = false;
+                            }
+                            if (TimeCombo.SelectedIndex > 0 || TargetTimesList.Count > 0)
+                            {
+                                RateBox.Text = $"Current Times: {Curtimes}" + RateBox.Text;
+                                RateBox.Text = $"Time Match: {TimeMatch}{(TimeMatch ? $"{Environment.NewLine}Scan until {TimeSpan.FromSeconds(LimitTime).TotalMinutes:0.0000} minutes later from Now!" : "")}{Environment.NewLine}" + RateBox.Text;
+                            }
+                        });
                         if (!TimeMatch)
                         {
                             await TimeAdjustToPreviousTime(seed, (ulong)unixTime, token).ConfigureAwait(false);
@@ -1524,27 +1766,39 @@ ReSave:
                             lastsavedinit = timetuple.Item2;
                         if (timetuple.Item1 == PreviousSaved)
                         {
-                            if (PicnicReset.Checked)
+                            if (GetCheckState(PicnicReset))
                             {
                                 Task Close = Task.Run(async () => { await ClosePicnic(token).ConfigureAwait(false); CollideTaskComplete = true; });
                                 ResetTaskStatus();
-                                await Task.WhenAll(Close, RecoverToOverworld(token)).ConfigureAwait(false);
+                                await Task.WhenAll(Close, RecoverToOverworld(token), GetTaskStatus(token)).ConfigureAwait(false);
                             }
                             if (!await PlayerNotOnMount(token).ConfigureAwait(false))
                             {
-                                await Task.Delay(1_500, token).ConfigureAwait(false);
+                                await Task.Delay(0_500, token).ConfigureAwait(false);
                             }
                             goto ReSave;
                         }
                         PreviousSaved = timetuple.Item1;
                     }
-                    ScanButton.Text = "Scanning...";
                     var tuple = await ReadBlock(BlocksOverworld.Overworld, init, token).ConfigureAwait(false);
                     var test = tuple.Item1;
                     if (init == 0)
                         init = tuple.Item2;
-                    if (OutbreakType.SelectedIndex > 0 || TimeCombo.SelectedIndex > 0)
-                        spawnfound = false;
+                    if (InvokeRequired)
+                    {
+                        Invoke(() =>
+                        {
+                            ScanButton.Text = "Scanning...";
+                            if (OutbreakType.SelectedIndex > 0 || TimeCombo.SelectedIndex > 0)
+                                spawnfound = false;
+                        });
+                    }
+                    else
+                    {
+                        ScanButton.Text = "Scanning...";
+                        if (OutbreakType.SelectedIndex > 0 || TimeCombo.SelectedIndex > 0)
+                            spawnfound = false;
+                    }
                     RibbonIndex TimeMark = RibbonIndex.MAX_COUNT;
                     RibbonIndex WeatherMark = RibbonIndex.MAX_COUNT;
                     for (int i = 0; i < 20; i++)
@@ -1555,10 +1809,13 @@ ReSave:
                         bool isValid = PersonalTable.SV.IsPresentInGame(pk.Species, pk.Form);
                         if (!isValid || pk == null || pk.Species < 0 || pk.Species > (int)Species.MAX_COUNT)
                         {
-                            outputBox[i].Text = "No Pokémon present.";
-                            sprite = "https://raw.githubusercontent.com/kwsch/PKHeX/master/PKHeX.Drawing.PokeSprite/Resources/img/Pokemon%20Sprite%20Overlays/starter.png";
-                            boxes[i].Load(sprite);
-                            ScanButton.Text = "Done";
+                            Invoke(() =>
+                            {
+                                outputBox[i].Text = "No Pokémon present.";
+                                sprite = "https://raw.githubusercontent.com/kwsch/PKHeX/master/PKHeX.Drawing.PokeSprite/Resources/img/Pokemon%20Sprite%20Overlays/starter.png";
+                                boxes[i].Load(sprite);
+                                ScanButton.Text = "Done";
+                            });
                             break;
                         }
                         Encounter++;
@@ -1577,10 +1834,13 @@ ReSave:
                             };
                             SpecFormsList.Add(pk.Species, addDict);
                         }
-                        string output = GetRealPokemonString(pk);
-                        outputBox[i].Text = output;
                         sprite = PokeImg(pk, false);
-                        boxes[i].Load(sprite);
+                        Invoke(() =>
+                        {
+                            string output = GetRealPokemonString(pk);
+                            outputBox[i].Text = output;
+                            boxes[i].Load(sprite);
+                        });
 
                         if (HasMark(pk, out RibbonIndex mark))
                         {
@@ -1589,7 +1849,7 @@ ReSave:
                             if (IsWeatherMark(mark))
                                 WeatherMark = mark;
                             url = $"https://raw.githubusercontent.com/kwsch/PKHeX/master/PKHeX.Drawing.Misc/Resources/img/ribbons/ribbonmark{mark.ToString().Replace("Mark", "").ToLower()}.png";
-                            markboxes[i].Load(url);
+                            Invoke(() =>markboxes[i].Load(url));
                         }
                         for (int j = 0; j < encounterFilters.Count; j++)
                         {
@@ -1608,63 +1868,117 @@ ReSave:
                                 captions.Add(caption);
                                 matchcount++;
                                 WebHookUtil.SendDetailNotifications(pk, sprite, true, TrainerInfo);
-                                if (pk.IsShiny)
+                                Invoke(() =>
                                 {
-                                    outputBox[i].BackColor = Color.Gold;
-                                    outputBox[i].ForeColor = Color.BlueViolet;
-                                }
-                                else
-                                {
-                                    outputBox[i].BackColor = Color.YellowGreen;
-                                    outputBox[i].ForeColor = Color.OrangeRed;
-                                }
+                                    if (pk.IsShiny)
+                                    {
+                                        outputBox[i].BackColor = Color.Gold;
+                                        outputBox[i].ForeColor = Color.BlueViolet;
+                                    }
+                                    else
+                                    {
+                                        outputBox[i].BackColor = Color.YellowGreen;
+                                        outputBox[i].ForeColor = Color.OrangeRed;
+                                    }
+                                });
                                 break;
                             }
                         }
                         if(pk.IsShiny && matchcount <= 0)
                             WebHookUtil.SendDetailNotifications(pk, sprite, false, TrainerInfo);
-                        if ((OutbreakType.SelectedIndex > 0 || TimeCombo.SelectedIndex > 0) && pk.Species == TargetMon && (!FormCombo.Visible || pk.Form == TargetForm))
+                        if (InvokeRequired)
                         {
-                            spawnfound = true;
-                            OutbreakText.Text = $"{Strings.Species[pk.Species]}{FormOutput(pk.Species, pk.Form, out _)}";
+                            Invoke(() =>
+                            {
+                                if ((OutbreakType.SelectedIndex > 0 || TimeCombo.SelectedIndex > 0) && pk.Species == TargetMon && (!FormCombo.Visible || pk.Form == TargetForm))
+                                {
+                                    spawnfound = true;
+                                    OutbreakText.Text = $"{Strings.Species[pk.Species]}{FormOutput(pk.Species, pk.Form, out _)}";
+                                }
+                            });
                         }
-                        coordList.Add(coord);
+                        else
+                        {
+                            if ((OutbreakType.SelectedIndex > 0 || TimeCombo.SelectedIndex > 0) && pk.Species == TargetMon && (!FormCombo.Visible || pk.Form == TargetForm))
+                            {
+                                spawnfound = true;
+                                OutbreakText.Text = $"{Strings.Species[pk.Species]}{FormOutput(pk.Species, pk.Form, out _)}";
+                            }
+                        }
+                            coordList.Add(coord);
                     }
-                    RateBox.Text = $"TotalEncounters: {Encounter}{Environment.NewLine}{PrintPokemonPopulation(SpecFormsList, Encounter)}";
-                    ScanButton.Text = "Done";
-
-                    TeleportIndex.Maximum = coordList.Count - 1;
+                    if (InvokeRequired)
+                    {
+                        Invoke(() =>
+                        {
+                            RateBox.Text = $"TotalEncounters: {Encounter}{Environment.NewLine}{PrintPokemonPopulation(SpecFormsList, Encounter)}";
+                            ScanButton.Text = "Done";
+                            TeleportIndex.Maximum = coordList.Count - 1;
+                        });
+                    }
+                    else
+                    {
+                        RateBox.Text = $"TotalEncounters: {Encounter}{Environment.NewLine}{PrintPokemonPopulation(SpecFormsList, Encounter)}";
+                        ScanButton.Text = "Done";
+                        TeleportIndex.Maximum = coordList.Count - 1;
+                    }
                     if (matchcount > 0)
                     {
                         await Click(HOME, 1_000, token).ConfigureAwait(false);
-                        TeleportIndex.Value = matchindex.FirstOrDefault();
-                        for (int i = 0; i < captions.Count; i++)
-                            MessageBox.Show(this, Spec[i], captions[i]);
+                        if (InvokeRequired)
+                        {
+                            Invoke(() =>
+                            {
+                                TeleportIndex.Value = matchindex.FirstOrDefault();
+                                for (int i = 0; i < captions.Count; i++)
+                                    MessageBox.Show(this, Spec[i], captions[i]);
+                            });
+                        }
+                        else
+                        {
+                            TeleportIndex.Value = matchindex.FirstOrDefault();
+                            for (int i = 0; i < captions.Count; i++)
+                                MessageBox.Show(this, Spec[i], captions[i]);
+                        }
                         EnableOptions();
                         return;
                     }
                     coordList = [];
-                    if (NonSaveMode.Checked)
+                    if (GetCheckState(NonSaveMode))
                     {
                         EnableOptions();
                         return;
                     }
                     if (initialize)
                         initialize = false;
-                    if (Stop.Checked)
+                    if (GetCheckState(Stop))
                     {
                         await Click(HOME, 1_000, token).ConfigureAwait(false);
                         EnableOptions();
-                        MessageBox.Show(this, "Stop Scaning!");
+                        if (InvokeRequired)
+                            Invoke(() => MessageBox.Show(this, "Stop Scaning!"));
+                        else
+                            MessageBox.Show(this, "Stop Scaning!");
                         return;
                     }
-                    if (TimeCombo.SelectedIndex > 0 && !spawnfound)
+                    if (Invoke(() => TimeCombo.SelectedIndex) > 0 && !spawnfound)
                     {
                         LogUtil.LogText("Target pokemon is not found! Adjust time");
-                        OutbreakText.Text = "Not Active";
                         await TimeAdjustToPreviousTime(seed, (ulong)unixTime, token).ConfigureAwait(false);
                         LogUtil.LogText($"Target outbreak and Pokemon are found! Adjusting time is success!{Environment.NewLine}Set Time: {TimeZoneInfo.ConvertTimeFromUtc(epoch.AddSeconds(unixTime), info): yyyy/MM/dd HH:mm:ss}{Environment.NewLine}Current seed(New): {seed_new:X}, Desired seed: {seed:X}");
-                        Reset.Checked = true;
+                        if (InvokeRequired)
+                        {
+                            Invoke(() =>
+                            {
+                                OutbreakText.Text = "Not Active";
+                                Reset.Checked = true;
+                            });
+                        }
+                        else
+                        {
+                            OutbreakText.Text = "Not Active";
+                            Reset.Checked = true;
+                        }
                         init = 0;
                         lastsavedinit = 0;
                         await BoostShinyRolls(token).ConfigureAwait(false);
@@ -1678,41 +1992,47 @@ ReSave:
                         return;
                     }
                 }
-                ScanButton.Text = "Scan!";
+                if(InvokeRequired)
+                    Invoke(() => ScanButton.Text = "Scan!");
+                else
+                    ScanButton.Text = "Scan!";
                 await RefreshOnMountOffset(token).ConfigureAwait(false);
-                if (ScanLocationCannotPicnic.Checked)
+                if (GetCheckState(ScanLocationCannotPicnic))
                 {
                     Task CollideTask = Task.Run(async () => { await CollideToSpot(coordx, coordy, coordz, token).ConfigureAwait(false); CollideTaskComplete = true; });
                     ResetTaskStatus();
-                    await Task.WhenAll(CollideTask, RecoverToOverworld(token)).ConfigureAwait(false);
+                    await Task.WhenAll(CollideTask, RecoverToOverworld(token), GetTaskStatus(token)).ConfigureAwait(false);
                 }
                 if (!await PlayerNotOnMount(token).ConfigureAwait(false))
                 {
                     ResetTaskStatus();
-                    await Task.WhenAll(DisCollideReposite(token), RecoverToOverworld(token)).ConfigureAwait(false);
+                    await Task.WhenAll(DisCollideReposite(token), RecoverToOverworld(token), GetTaskStatus(token)).ConfigureAwait(false);
                 }
-                Task PicnicTask = PrepareToPicnic((ScanLocationCannotPicnic.Checked ? coordx : XCoord.Text), (ScanLocationCannotPicnic.Checked ? coordy : YCoord.Text), (ScanLocationCannotPicnic.Checked ? coordz : ZCoord.Text), token);
+                Task PicnicTask = PrepareToPicnic((GetCheckState(ScanLocationCannotPicnic) ? coordx : Invoke(() => XCoord.Text)), (GetCheckState(ScanLocationCannotPicnic) ? coordy : Invoke(() => YCoord.Text)), (GetCheckState(ScanLocationCannotPicnic) ? coordz : Invoke(() => ZCoord.Text)), token);
                 ResetTaskStatus();
-                await Task.WhenAll(PicnicTask, RecoverToOverworld(token)).ConfigureAwait(false);
-                if (TeleportMode.Checked)
+                await Task.WhenAll(PicnicTask, RecoverToOverworld(token), GetTaskStatus(token)).ConfigureAwait(false);
+                if (GetCheckState(TeleportMode))
                     await Task.Delay(8_000, token).ConfigureAwait(false);
                 await OpenPicnic(token).ConfigureAwait(false);
                 var Check = await eggviewer.OnlyMakeSandwich(token, TeleportMode.Checked).ConfigureAwait(false);
                 if (!Check.Item1)
                 {
                     await Click(HOME, 1_000, token).ConfigureAwait(false);
-                    MessageBox.Show(this, Check.Item2, "Sandwich Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    if (InvokeRequired)
+                        Invoke(() => MessageBox.Show(this, Check.Item2, "Sandwich Error", MessageBoxButtons.OK, MessageBoxIcon.Error));
+                    else
+                        MessageBox.Show(this, Check.Item2, "Sandwich Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     EnableOptions();
                     return;
                 }
                 Task ClosePic = Task.Run(async () => { await ClosePicnic(token).ConfigureAwait(false); CollideTaskComplete = true; });
                 ResetTaskStatus();
-                await Task.WhenAll(ClosePic, RecoverToOverworld(token)).ConfigureAwait(false);
-                if (ScanLocationCannotPicnic.Checked)
+                await Task.WhenAll(ClosePic, RecoverToOverworld(token), GetTaskStatus(token)).ConfigureAwait(false);
+                if (GetCheckState(ScanLocationCannotPicnic))
                 {
                     Task CollideTask = Task.Run(async () => { await CollideToSpot(XCoord.Text, YCoord.Text, ZCoord.Text, token).ConfigureAwait(false); CollideTaskComplete = true; });
                     ResetTaskStatus();
-                    await Task.WhenAll(CollideTask, RecoverToOverworld(token)).ConfigureAwait(false);
+                    await Task.WhenAll(CollideTask, RecoverToOverworld(token), GetTaskStatus(token)).ConfigureAwait(false);
                     await Task.Delay(1_000).ConfigureAwait(false);
                 }
                 initialize = true;
@@ -1735,18 +2055,42 @@ ReSave:
         {
             if (!PokeList.ContainsKey(TargetMon))
                 return 0.0;
-            if (FormCombo.Visible && !PokeList[TargetMon].ContainsKey(TargetForm))
+            if (IsVisible(FormCombo) && !PokeList[TargetMon].ContainsKey(TargetForm))
                 return 0.0;
             var TargetCount = PokeList[TargetMon][TargetForm];
             var Rate = 100.00 * TargetCount / Total;
             return Rate;
         }
+        private bool IsVisible(ComboBox form)
+        {
+            if (InvokeRequired)
+            {
+                return Invoke(new Func<bool>(() => form.Visible));
+            }
+            else
+            {
+                return form.Visible;
+            }
+        }
         private bool TargetOutbreakIsHighPopulation(Dictionary<ushort, Dictionary<byte, int>> PokeList, int Total, ushort TargetMon, byte TargetForm)
         {
-            if (OutbreakSpeciesBox.SelectedIndex < 0)
+            int SpeciesIndex = 0;
+            if (InvokeRequired)
+            {
+                Invoke(() =>
+                {
+                    SpeciesIndex = OutbreakSpeciesBox.SelectedIndex;
+                });
+            }
+            else
+            {
+                SpeciesIndex = OutbreakSpeciesBox.SelectedIndex;                
+            }
+            if (SpeciesIndex < 0)
                 return true;
 
-            var Population = GetTargetPopulationRate(PokeList, Total, TargetMon, (byte)TargetForm);
+
+            var Population = GetTargetPopulationRate(PokeList, Total, TargetMon, TargetForm);
             if (Population < 20.0)
                 return false;
 
@@ -1812,27 +2156,44 @@ ReSave:
         }
         private (DateTime, long) GetLocalDateTime(long Ticks)
         {
-            if (TimeZoneCombo.SelectedIndex < 0 || TimeZoneCombo.SelectedValue == null)
+            int TimeIndex = 0;
+            object? TimeValue = null;
+            if (InvokeRequired)
+            {
+                Invoke(new Action(() =>
+                {
+                    TimeIndex = TimeZoneCombo.SelectedIndex;
+                    TimeValue = TimeZoneCombo.SelectedValue;
+                }));
+            }
+            else
+            {
+                TimeIndex = TimeZoneCombo.SelectedIndex;
+                TimeValue = TimeZoneCombo.SelectedValue;
+            }
+            if (TimeIndex < 0 || TimeValue == null)
                 return (DateTime.UtcNow, (long)TimeSpan.Zero.TotalSeconds);
             DateTime epoch = new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc);
             DateTime UTCDate = epoch.AddSeconds(Ticks);
-            TimeZoneInfo info = TimeZoneInfo.FindSystemTimeZoneById((string)TimeZoneCombo.SelectedValue);
+            TimeZoneInfo info = TimeZoneInfo.FindSystemTimeZoneById((string)TimeValue);
             DateTime CurrentDate = TimeZoneInfo.ConvertTimeFromUtc(UTCDate, info);
             return (CurrentDate, (long)new TimeSpan(CurrentDate.Ticks - UTCDate.Ticks).TotalSeconds);
 
         }
         private (Times, long) GetFixedLastDateCycle(long LastDateCycle, TeraRaidMapParent Target)
         {
-            //DateTime LastDate = GetLocalDateTime(LastDateCycle).Item1;
             DateTime epoch = new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc);
             DateTime LastDate = epoch.AddSeconds(LastDateCycle);
-            ConnectionBox.Text += $"{Environment.NewLine}LastDate Cycle: {LastDate:yyyy/MM/dd HH:mm:ss}";
+            //ConnectionBox.Text += $"{Environment.NewLine}LastDate Cycle: {LastDate:yyyy/MM/dd HH:mm:ss}";
             (Times baseTimes, TeraRaidMapParent Map) = TimesReroll.GetLastDateDic(LastDate);
             if (baseTimes == Times.All_Times)
                 return (Times.All_Times, -1);
             var LastDateCycleFix = TimesReroll.ChangeLastDateToTarget(Map, Target, LastDateCycle);
-            ConnectionBox.Text += $"{(string.IsNullOrEmpty(ConnectionBox.Text) ? "" : Environment.NewLine)}LastDateCycle Time in {Map}: {LastDate}{Environment.NewLine}LastDateCycle Time in {Target}: {epoch.AddSeconds(LastDateCycleFix)/*GetLocalDateTime(LastDateCycleFix).Item1*/}";
-            LastDateCombo.SelectedIndex = (int)baseTimes - 1;
+            //ConnectionBox.Text += $"{(string.IsNullOrEmpty(ConnectionBox.Text) ? "" : Environment.NewLine)}LastDateCycle Time in {Map}: {LastDate}{Environment.NewLine}LastDateCycle Time in {Target}: {epoch.AddSeconds(LastDateCycleFix)/*GetLocalDateTime(LastDateCycleFix).Item1*/}";
+            if(InvokeRequired)
+                Invoke(new Action(() => LastDateCombo.SelectedIndex = (int)baseTimes - 1));
+            else
+                LastDateCombo.SelectedIndex = (int)baseTimes - 1;
             return (baseTimes, LastDateCycleFix);
         }
         private (Times, long) GetTimesFromLastDate(long LastDateCycleFix, long CurrentTime, Times baseTimes)
@@ -1842,11 +2203,11 @@ ReSave:
             var difftemp = Math.Abs(diff);
             var Mod = difftemp % DateCycle;
             var Diff_From_Start = diff > 0 ? DateCycle - Mod : Mod;
-            RateBox.Text = $"{Environment.NewLine}Current Time: {CurrentDate}(UTC Offset: {Offset}){Environment.NewLine}Diff From Current Time: {difftemp} seconds";
+            //RateBox.Text = $"{Environment.NewLine}Current Time: {CurrentDate}(UTC Offset: {Offset}){Environment.NewLine}Diff From Current Time: {difftemp} seconds";
             long BaseTime = TimeBase.GetTimeBase(baseTimes);
             long BaseNextTime = TimeBase.GetNextTimeBase(baseTimes);
             long BaseSencondNextTime = TimeBase.GetSecondNextTimeBase(baseTimes);
-            RateBox.Text += $"{Environment.NewLine}Diff From {baseTimes} Start: {TimeSpan.FromSeconds(Diff_From_Start).TotalMinutes}";
+            //RateBox.Text += $"{Environment.NewLine}Diff From {baseTimes} Start: {TimeSpan.FromSeconds(Diff_From_Start).TotalMinutes}";
             if (Diff_From_Start <= BaseTime)
                 return (baseTimes, BaseTime - Diff_From_Start);
             if (BaseTime < Diff_From_Start && Diff_From_Start <= BaseNextTime)
@@ -1942,27 +2303,46 @@ ReSave:
         private async Task PrepareSave((float, float, float) TargetCoords, CancellationToken token)
         {
             var PlayerCoords = (await PlayerCoordRead(token).ConfigureAwait(false)).ToTuple();
-            if (Math.Abs(TargetCoords.Item1 - PlayerCoords.Item1) > (TeleportMode.Checked ? 5 : 0.5) || Math.Abs(TargetCoords.Item2 - PlayerCoords.Item2) > (TeleportMode.Checked ? 5 : 0.5) || Math.Abs(TargetCoords.Item3 - PlayerCoords.Item3) > (TeleportMode.Checked ? 5 : 0.5))
+            ScanEvent.WaitOne();
+            bool Teleport = false;
+            if (InvokeRequired)
+                Invoke(() => Teleport = TeleportMode.Checked);
+            else
+                Teleport = TeleportMode.Checked;
+            if (Math.Abs(TargetCoords.Item1 - PlayerCoords.Item1) > (Teleport ? 5 : 0.5) || Math.Abs(TargetCoords.Item2 - PlayerCoords.Item2) > (Teleport ? 5 : 0.5) || Math.Abs(TargetCoords.Item3 - PlayerCoords.Item3) > (Teleport ? 5 : 0.5))
             {
-                CollideTaskRunning = true;
-                while (OverworldTaskRunning)
-                    await Task.Delay(1_000, token).ConfigureAwait(false);
                 await RefreshOnMountOffset(token).ConfigureAwait(false);
-                CollideTaskRunning = false;
-                await CollideToSpot(XCoord.Text, YCoord.Text, ZCoord.Text, token).ConfigureAwait(false);
-                if (PicnicReset.Checked)
+                (string X, string Y, string Z) = (string.Empty, string.Empty, string.Empty);
+                if (InvokeRequired)
                 {
-                    await Task.Delay(1_000, token).ConfigureAwait(false);
+                    Invoke(() =>
+                    {
+                        X = XCoord.Text;
+                        Y = YCoord.Text;
+                        Z = ZCoord.Text;                        
+                    });
+                }
+                else
+                {
+                    X = XCoord.Text;
+                    Y = YCoord.Text;
+                    Z = ZCoord.Text;                    
+                }
+                await CollideToSpot(X, Y, Z, token).ConfigureAwait(false);
+                if (GetCheckState(PicnicReset))
+                {
+                    ScanEvent.WaitOne();
                     await DisCollideOnly(token).ConfigureAwait(false);
                 }
-                if (!TeleportMode.Checked)
+                if (!GetCheckState(TeleportMode))
                 {
                     await Reposition(token).ConfigureAwait(false);
                 }
-                await Task.Delay(1_000, token).ConfigureAwait(false);
+                ScanEvent.WaitOne();
                 await PrepareSave(TargetCoords, token).ConfigureAwait(false);
                 return;
             }
+            OverworldEvent.Set();
             CollideTaskComplete = true;
         }
         private async Task DefeatPokemon(CancellationToken token)
@@ -1972,12 +2352,24 @@ ReSave:
         }
         private async Task Flee(CancellationToken token)
         {
-            for (int i = 0; i < 3; i++)
+            while (await IsInBattle(token).ConfigureAwait(false))
+            {
+                for (int i = 0; i < 3; i++)
+                {
+                    await Click(B, 0_500, token).ConfigureAwait(false);
+                    if (!await IsInBattle(token).ConfigureAwait(false))
+                        return;
+                }
+                await Click(DUP, 0_600, token).ConfigureAwait(false);
+                if (!await IsInBattle(token).ConfigureAwait(false))
+                    break;
                 await Click(B, 0_500, token).ConfigureAwait(false);
-            await Click(DUP, 0_800, token).ConfigureAwait(false);
-            await Click(A, 2_500, token).ConfigureAwait(false);
+                if (!await IsInBattle(token).ConfigureAwait(false))
+                    break;
+                await Click(A, 0_500, token).ConfigureAwait(false);                
+            }            
         }
-        
+
         private async Task<bool> IsInBattle(CancellationToken token)
         {
             RefreshConnection();
@@ -2018,7 +2410,12 @@ redo:
                 CacheField = 0;
                 goto redo;
             }
-            var desired = OutbreakType.SelectedIndex switch
+            int MapIndex = 0;
+            if (InvokeRequired)
+                Invoke(() => MapIndex = OutbreakType.SelectedIndex);
+            else
+                MapIndex = OutbreakType.SelectedIndex;
+            var desired = MapIndex switch
             {
                 1 or 5 => TeraRaidMapParent.Paldea,
                 2 or 6 => TeraRaidMapParent.Kitakami,
@@ -2030,7 +2427,7 @@ redo:
             if (desired > TeraRaidMapParent.Blueberry || desired < TeraRaidMapParent.Paldea)
                 return false;
             MapParent = (TeraRaidMapParent)data.Item1;
-            if (OutbreakType.SelectedIndex <= 0 || OutbreakType.SelectedIndex == 4 || OutbreakType.SelectedIndex == 8)
+            if (MapIndex <= 0 || MapIndex == 4 || MapIndex == 8)
                 return true;
 
             return MapParent == desired;
@@ -2042,7 +2439,12 @@ redo:
             var block = Blocks.KOutbreakSpecies1;
             var formblock = Blocks.KMassOutbreak01Form;
             var pos = Blocks.KMassOutbreak01CenterPos;
-            if (OutbreakType.SelectedIndex is 1 or 4)
+            int OutbreakTypeIndex = 0;
+            if(InvokeRequired)
+                Invoke(() => OutbreakTypeIndex = OutbreakType.SelectedIndex);
+            else
+                OutbreakTypeIndex = OutbreakType.SelectedIndex;
+            if (OutbreakTypeIndex is 1 or 4)
             {
 recalc:
                 var dataP = await ReadEncryptedBlockByte(Blocks.KMassOutbreakTotalPaldea, CountCacheP, token).ConfigureAwait(false);
@@ -2084,17 +2486,33 @@ recalc:
                     OutbreakCache[i].SpeciesCenterPOSLoaded = bofs;
 
                     var specnum = SpeciesConverter.GetNational9((ushort)species);
-                    if (specnum == TargetMon && (!FormCombo.Visible || form == TargetForm))
+                    if (InvokeRequired)
                     {
-                        outbreakfound = true;
-                        OutbreakCoords.Add(obpos);
-                        OutbreakText.Text = $"{Strings.Species[specnum]}{FormOutput(Strings, specnum, form, out _)}";
-                        return outbreakfound;
+                        Invoke(() =>
+                        {
+                            if (specnum == TargetMon && (!FormCombo.Visible || form == TargetForm))
+                            {
+                                outbreakfound = true;
+                                OutbreakCoords.Add(obpos);
+                                OutbreakText.Text = $"{Strings.Species[specnum]}{FormOutput(Strings, specnum, form, out _)}";                                
+                            }
+                            return outbreakfound;
+                        });
+                    }
+                    else
+                    {
+                        if (specnum == TargetMon && (!FormCombo.Visible || form == TargetForm))
+                        {
+                            outbreakfound = true;
+                            OutbreakCoords.Add(obpos);
+                            OutbreakText.Text = $"{Strings.Species[specnum]}{FormOutput(Strings, specnum, form, out _)}";
+                            return outbreakfound;
+                        }
                     }
 
                 }
             }
-            if (OutbreakType.SelectedIndex is 2 or 4)
+            if (OutbreakTypeIndex is 2 or 4)
             {
 recalc:
                 var dataK = await ReadEncryptedBlockByte(Blocks.KMassOutbreakTotalKitakami, CountCacheK, token).ConfigureAwait(false);
@@ -2133,17 +2551,33 @@ recalc:
                     OutbreakCache[i].SpeciesCenterPOSLoaded = bofs;
 
                     var specnum = SpeciesConverter.GetNational9((ushort)species);
-                    if (specnum == TargetMon && (!FormCombo.Visible || form == TargetForm))
+                    if (InvokeRequired)
                     {
-                        outbreakfound = true;
-                        OutbreakCoords.Add(obpos);
-                        OutbreakText.Text = $"{Strings.Species[specnum]}{FormOutput(Strings, specnum, form, out _)}";
-                        return outbreakfound;
+                        Invoke(() =>
+                        {
+                            if (specnum == TargetMon && (!FormCombo.Visible || form == TargetForm))
+                            {
+                                outbreakfound = true;
+                                OutbreakCoords.Add(obpos);
+                                OutbreakText.Text = $"{Strings.Species[specnum]}{FormOutput(Strings, specnum, form, out _)}";
+                            }
+                            return outbreakfound;
+                        });
+                    }
+                    else
+                    {
+                        if (specnum == TargetMon && (!FormCombo.Visible || form == TargetForm))
+                        {
+                            outbreakfound = true;
+                            OutbreakCoords.Add(obpos);
+                            OutbreakText.Text = $"{Strings.Species[specnum]}{FormOutput(Strings, specnum, form, out _)}";
+                            return outbreakfound;
+                        }
                     }
 
                 }
             }
-            if (OutbreakType.SelectedIndex is 3 or 4)
+            if (OutbreakTypeIndex is 3 or 4)
             {
 recalc:
                 var dataB = await ReadEncryptedBlockByte(Blocks.KMassOutbreakTotalBlueberry, CountCacheK, token).ConfigureAwait(false);
@@ -2183,17 +2617,32 @@ recalc:
                     OutbreakCache[i].SpeciesCenterPOSLoaded = bofs;
 
                     var specnum = SpeciesConverter.GetNational9((ushort)species);
-                    if (specnum == TargetMon && (!FormCombo.Visible || form == TargetForm))
+                    if (InvokeRequired)
                     {
-                        outbreakfound = true;
-                        OutbreakCoords.Add(obpos);
-                        OutbreakText.Text = $"{Strings.Species[specnum]}{FormOutput(Strings, specnum, form, out _)}";
-                        return outbreakfound;
+                        Invoke(() =>
+                        {
+                            if (specnum == TargetMon && (!FormCombo.Visible || form == TargetForm))
+                            {
+                                outbreakfound = true;
+                                OutbreakCoords.Add(obpos);
+                                OutbreakText.Text = $"{Strings.Species[specnum]}{FormOutput(Strings, specnum, form, out _)}";
+                            }
+                            return outbreakfound;
+                        });
                     }
-
+                    else
+                    {
+                        if (specnum == TargetMon && (!FormCombo.Visible || form == TargetForm))
+                        {
+                            outbreakfound = true;
+                            OutbreakCoords.Add(obpos);
+                            OutbreakText.Text = $"{Strings.Species[specnum]}{FormOutput(Strings, specnum, form, out _)}";
+                            return outbreakfound;
+                        }
+                    }
                 }
             }
-            if (OutbreakType.SelectedIndex is 5 or 6 or 7 or 8)
+            if (OutbreakTypeIndex is 5 or 6 or 7 or 8)
             {
                 var BCATObEnabled = await ReadEncryptedBlockBool(Blocks.KBCATOutbreakEnabled, token).ConfigureAwait(false);
                 if (BCATObEnabled)
@@ -2202,7 +2651,7 @@ recalc:
                     var BCOform = Blocks.KOutbreakBC01MainForm;
                     var BCOcenter = Blocks.KOutbreakBC01MainCenterPos;
 
-                    if (OutbreakType.SelectedIndex is 5 or 8)
+                    if (OutbreakTypeIndex is 5 or 8)
                     {
 recalc:
                         var dataBCP = await ReadEncryptedBlockByte(Blocks.KOutbreakBCMainNumActive, CountCacheBCP, token).ConfigureAwait(false);
@@ -2245,18 +2694,33 @@ recalc:
                             BCATOutbreakCache[i].SpeciesCenterPOSLoaded = bofs;
 
                             var specnum = SpeciesConverter.GetNational9((ushort)species);
-                            if (specnum == TargetMon && (!FormCombo.Visible || form == TargetForm))
+                            if (InvokeRequired)
                             {
-                                outbreakfound = true;
-                                OutbreakCoords.Add(obpos);
-                                OutbreakText.Text = $"{Strings.Species[specnum]}{FormOutput(Strings, specnum, form, out _)}";
-                                return outbreakfound;
+                                Invoke(() =>
+                                {
+                                    if (specnum == TargetMon && (!FormCombo.Visible || form == TargetForm))
+                                    {
+                                        outbreakfound = true;
+                                        OutbreakCoords.Add(obpos);
+                                        OutbreakText.Text = $"{Strings.Species[specnum]}{FormOutput(Strings, specnum, form, out _)}";
+                                    }
+                                    return outbreakfound;
+                                });
                             }
-
+                            else
+                            {
+                                if (specnum == TargetMon && (!FormCombo.Visible || form == TargetForm))
+                                {
+                                    outbreakfound = true;
+                                    OutbreakCoords.Add(obpos);
+                                    OutbreakText.Text = $"{Strings.Species[specnum]}{FormOutput(Strings, specnum, form, out _)}";
+                                    return outbreakfound;
+                                }
+                            }
                         }
                     }
 
-                    if (OutbreakType.SelectedIndex is 6 or 8)
+                    if (OutbreakTypeIndex is 6 or 8)
                     {
 recalc:
                         var dataBCK = await ReadEncryptedBlockByte(Blocks.KOutbreakBCDLC1NumActive, CountCacheBCK, token).ConfigureAwait(false);
@@ -2303,18 +2767,32 @@ recalc:
                             BCATOutbreakCache[i].SpeciesCenterPOSLoaded = bofs;
 
                             var specnum = SpeciesConverter.GetNational9((ushort)species);
-                            if (specnum == TargetMon && (!FormCombo.Visible || form == TargetForm))
+                            if (InvokeRequired)
                             {
-                                outbreakfound = true;
-                                OutbreakCoords.Add(obpos);
-                                OutbreakText.Text = $"{Strings.Species[specnum]}{FormOutput(Strings, specnum, form, out _)}";
-                                return outbreakfound;
+                                Invoke(() =>
+                                {
+                                    if (specnum == TargetMon && (!FormCombo.Visible || form == TargetForm))
+                                    {
+                                        outbreakfound = true;
+                                        OutbreakCoords.Add(obpos);
+                                        OutbreakText.Text = $"{Strings.Species[specnum]}{FormOutput(Strings, specnum, form, out _)}";
+                                    }
+                                    return outbreakfound;
+                                });
                             }
-
-
+                            else
+                            {
+                                if (specnum == TargetMon && (!FormCombo.Visible || form == TargetForm))
+                                {
+                                    outbreakfound = true;
+                                    OutbreakCoords.Add(obpos);
+                                    OutbreakText.Text = $"{Strings.Species[specnum]}{FormOutput(Strings, specnum, form, out _)}";
+                                    return outbreakfound;
+                                }
+                            }
                         }
                     }
-                    if (OutbreakType.SelectedIndex is 7 or 8)
+                    if (OutbreakTypeIndex is 7 or 8)
                     {
 recalc:
                         var dataBCB = await ReadEncryptedBlockByte(Blocks.KOutbreakBCDLC2NumActive, CountCacheBCK, token).ConfigureAwait(false);
@@ -2361,15 +2839,29 @@ recalc:
                             BCATOutbreakCache[i].SpeciesCenterPOSLoaded = bofs;
 
                             var specnum = SpeciesConverter.GetNational9((ushort)species);
-                            if (specnum == TargetMon && (!FormCombo.Visible || form == TargetForm))
+                            if (InvokeRequired)
                             {
-                                outbreakfound = true;
-                                OutbreakCoords.Add(obpos);
-                                OutbreakText.Text = $"{Strings.Species[specnum]}{FormOutput(Strings, specnum, form, out _)}";
-                                return outbreakfound;
+                                Invoke(() =>
+                                {
+                                    if (specnum == TargetMon && (!FormCombo.Visible || form == TargetForm))
+                                    {
+                                        outbreakfound = true;
+                                        OutbreakCoords.Add(obpos);
+                                        OutbreakText.Text = $"{Strings.Species[specnum]}{FormOutput(Strings, specnum, form, out _)}";
+                                    }
+                                    return outbreakfound;
+                                });
                             }
-
-
+                            else
+                            {
+                                if (specnum == TargetMon && (!FormCombo.Visible || form == TargetForm))
+                                {
+                                    outbreakfound = true;
+                                    OutbreakCoords.Add(obpos);
+                                    OutbreakText.Text = $"{Strings.Species[specnum]}{FormOutput(Strings, specnum, form, out _)}";
+                                    return outbreakfound;
+                                }
+                            }
                         }
                     }
                 }
@@ -2965,21 +3457,17 @@ recalc:
             await Task.Delay(delay, token).ConfigureAwait(false);
         }
 
-        private async Task Reposition(CancellationToken token)
+        private async Task Reposition(CancellationToken token, bool FirstMove = false)
         {
-            CollideTaskRunning = true;
-            while (OverworldTaskRunning)
-                await Task.Delay(1_000, token).ConfigureAwait(false);
+            if(!FirstMove)
+                ScanEvent.WaitOne();
             await Click(Y, 1_000, token).ConfigureAwait(false);
             if (await IsOnOverworld(OverWorldOffset, token).ConfigureAwait(false))
                 await Click(Y, 0_500, token).ConfigureAwait(false);
-            CollideTaskRunning = false;
-            await Task.Delay(1_000, token).ConfigureAwait(false);
-            CollideTaskRunning = true;
-            while (OverworldTaskRunning)
-                await Task.Delay(1_000, token).ConfigureAwait(false);
-            await Click(L, 1_000, token).ConfigureAwait(false);
-            CollideTaskRunning = false;
+            OverworldEvent.Set();
+            ScanEvent.WaitOne();
+            await Click(L, 0_600, token).ConfigureAwait(false);
+            OverworldEvent.Set();
         }
         private async Task SetUpMap(CancellationToken token)
         {
@@ -2998,13 +3486,12 @@ recalc:
         {
             bool HasReset = false;
             bool Teleport = false;
-            await Task.Delay(0_600, token).ConfigureAwait(false);
-            
-            if (await IsOnOverworld(OverWorldOffset, token).ConfigureAwait(false))
+            await Task.Delay(0_500, token).ConfigureAwait(false);
+
+            bool Overworld = await IsOnOverworld(OverWorldOffset, token).ConfigureAwait(false);
+            if (Overworld)
                 await Click(X, 1_000, token).ConfigureAwait(false);
-            while (await IsOnOverworldTitle(token).ConfigureAwait(false))
-                await Task.Delay(1_000, token);
-            Reset.Invoke(new Action(() => HasReset = Reset.Checked));
+            Invoke(() => HasReset = Reset.Checked);
             if (HasReset)
             {
                 //await Task.Delay(0_800, token).ConfigureAwait(false);
@@ -3026,45 +3513,39 @@ recalc:
             }
             await Click(A, HasReset ? 9_000 : 7_000, token).ConfigureAwait(false);
             if (HasReset)
-                Reset.Invoke(new Action(() => Reset.Checked = false));
-            TeleportMode.Invoke(new Action(() => Teleport = TeleportMode.Checked));
+                Invoke(() => Reset.Checked = false);
+            Invoke(() => Teleport = TeleportMode.Checked);
             if (Teleport)
                 await Click(MINUS, 2_000, token).ConfigureAwait(false);
-            if (!await IsOnOverworld(OverWorldOffset, token).ConfigureAwait(false))
+            Overworld = await IsOnOverworld(OverWorldOffset, token).ConfigureAwait(false);
+            if (!Overworld)
             {
-                ResetTaskStatus();
                 Task Reposite = Task.Run(async () =>
                 {
-                    await Reposition(token).ConfigureAwait(false);
+                    await Reposition(token, true).ConfigureAwait(false);
                     CollideTaskComplete = true;                    
                 });
-                await Task.WhenAll(Reposite, RecoverToOverworld(token)).ConfigureAwait(false);
+                ResetTaskStatus();
+                await Task.WhenAll(Reposite, RecoverToOverworld(token), GetTaskStatus(token)).ConfigureAwait(false);
                 await OpenPicnic(token).ConfigureAwait(false);
             }
 
         }
         private async Task ClosePicnic(CancellationToken token)
         {
-            CollideTaskRunning = true;
-            await Task.Delay(0_500, token).ConfigureAwait(false);
-            while (OverworldTaskRunning)
-                await Task.Delay(1_000, token).ConfigureAwait(false);
             for (int i = 0; i < 3; i++)
                 await Click(Y, 0_500, token).ConfigureAwait(false);
             if(!await IsOnOverworld(OverWorldOffset, token).ConfigureAwait(false))
             {
-                CollideTaskRunning = false;
+                OverworldEvent.Set();
                 return;
             }
-            CollideTaskRunning = false;
-            await Task.Delay(0_200, token).ConfigureAwait(false);
-            CollideTaskRunning = true;
-            while (OverworldTaskRunning)
-                await Task.Delay(1_000, token).ConfigureAwait(false);
+            OverworldEvent.Set();
+            ScanEvent.WaitOne();
             await Click(A, 1_000, token).ConfigureAwait(false);
-            for (int i = 0; i < 10; i++)
+            for (int i = 0; i < 8; i++)
                 await Click(A, 0_450, token).ConfigureAwait(false);
-            CollideTaskRunning = false;
+            OverworldEvent.Set();
         }
         private bool TargetCoordCheck()
         {
@@ -3305,7 +3786,12 @@ recalc:
         }
         private async Task BoostShinyRolls(CancellationToken token)
         {
-            if (!ShinyBoost.Checked)
+            bool BoostShinyRolls = false;
+            if (InvokeRequired)
+                Invoke(() => BoostShinyRolls = ShinyBoost.Checked);
+            else
+                BoostShinyRolls = ShinyBoost.Checked;
+            if (!BoostShinyRolls)
                 return;
             // Source: https://gbatemp.net/threads/pokemon-scarlet-violet-cheat-database.621563/
 
@@ -3351,84 +3837,173 @@ recalc:
                     string msg = $"ReConnect Count: {ReConnectCount}";
                     if (!Executor.Connection.Connected)
                         msg += $"{Environment.NewLine}Connection issue: Executor.Connection is not Connected!";
-                    ConnectionBox.Text = $"{msg}";
+                    if (InvokeRequired)
+                        Invoke(() => ConnectionBox.Text = $"{msg}");
+                    else
+                        ConnectionBox.Text = $"{msg}";
                 }
             }
         }
         public void DisableOptions()
         {
-            InWater.Enabled = false;
-            SandwichMode.Enabled = false;
-            PicnicReset.Enabled = false;
-            NonSaveMode.Enabled = false;
-            EatOnStart.Enabled = false;
-            Reset.Enabled = false;
-            checkBox6.Enabled = false;
-            checkBox7.Enabled = false;
-            TeleportMode.Enabled = false;
-            ScanLocationCannotPicnic.Enabled = false;
-            OutbreakType.Enabled = false;
-            TimeCombo.Enabled = false;
-            if (OutbreakSpeciesBox.Enabled)
-                OutbreakSpeciesBox.Enabled = false;
-            if (FormCombo.Visible && FormCombo.Enabled)
-                FormCombo.Enabled = false;
-            poketype.Enabled = false;
-            ScanButton.Enabled = false;
-            OutbreakResetButton.Enabled = false;
-            SetTimeButton.Enabled = false;
-            if (OutbreakText.Enabled)
-                OutbreakText.Enabled = false;
-            XCoord.Enabled = false;
-            YCoord.Enabled = false;
-            ZCoord.Enabled = false;
-            Language.Enabled = false;
-            DateReset.Enabled = false;
-            TeleportButton.Enabled = false;
-            TeleportIndex.Enabled = false;
-            TimeText.Enabled = false;
-            ShinyBoost.Enabled = false;
-            AutoReConnet.Enabled = false;
-            MapCheck.Enabled = false;
-            TimeZoneCombo.Enabled = false;
-            LastDateCombo.Enabled = false;
+            if (InvokeRequired)
+            {
+                Invoke(() =>
+                {
+                    InWater.Enabled = false;
+                    SandwichMode.Enabled = false;
+                    PicnicReset.Enabled = false;
+                    NonSaveMode.Enabled = false;
+                    EatOnStart.Enabled = false;
+                    Reset.Enabled = false;
+                    checkBox6.Enabled = false;
+                    checkBox7.Enabled = false;
+                    TeleportMode.Enabled = false;
+                    ScanLocationCannotPicnic.Enabled = false;
+                    OutbreakType.Enabled = false;
+                    TimeCombo.Enabled = false;
+                    if (OutbreakSpeciesBox.Enabled)
+                        OutbreakSpeciesBox.Enabled = false;
+                    if (FormCombo.Visible && FormCombo.Enabled)
+                        FormCombo.Enabled = false;
+                    poketype.Enabled = false;
+                    ScanButton.Enabled = false;
+                    OutbreakResetButton.Enabled = false;
+                    SetTimeButton.Enabled = false;
+                    if (OutbreakText.Enabled)
+                        OutbreakText.Enabled = false;
+                    XCoord.Enabled = false;
+                    YCoord.Enabled = false;
+                    ZCoord.Enabled = false;
+                    Language.Enabled = false;
+                    DateReset.Enabled = false;
+                    TeleportButton.Enabled = false;
+                    TeleportIndex.Enabled = false;
+                    TimeText.Enabled = false;
+                    ShinyBoost.Enabled = false;
+                    AutoReConnet.Enabled = false;
+                    MapCheck.Enabled = false;
+                    TimeZoneCombo.Enabled = false;
+                    LastDateCombo.Enabled = false;
+                });
+            }
+            else
+            {
+                InWater.Enabled = false;
+                SandwichMode.Enabled = false;
+                PicnicReset.Enabled = false;
+                NonSaveMode.Enabled = false;
+                EatOnStart.Enabled = false;
+                Reset.Enabled = false;
+                checkBox6.Enabled = false;
+                checkBox7.Enabled = false;
+                TeleportMode.Enabled = false;
+                ScanLocationCannotPicnic.Enabled = false;
+                OutbreakType.Enabled = false;
+                TimeCombo.Enabled = false;
+                if (OutbreakSpeciesBox.Enabled)
+                    OutbreakSpeciesBox.Enabled = false;
+                if (FormCombo.Visible && FormCombo.Enabled)
+                    FormCombo.Enabled = false;
+                poketype.Enabled = false;
+                ScanButton.Enabled = false;
+                OutbreakResetButton.Enabled = false;
+                SetTimeButton.Enabled = false;
+                if (OutbreakText.Enabled)
+                    OutbreakText.Enabled = false;
+                XCoord.Enabled = false;
+                YCoord.Enabled = false;
+                ZCoord.Enabled = false;
+                Language.Enabled = false;
+                DateReset.Enabled = false;
+                TeleportButton.Enabled = false;
+                TeleportIndex.Enabled = false;
+                TimeText.Enabled = false;
+                ShinyBoost.Enabled = false;
+                AutoReConnet.Enabled = false;
+                MapCheck.Enabled = false;
+                TimeZoneCombo.Enabled = false;
+                LastDateCombo.Enabled = false;
+            }
         }
 
         public void EnableOptions()
         {
-            InWater.Enabled = true;
-            SandwichMode.Enabled = true;
-            PicnicReset.Enabled = true;
-            NonSaveMode.Enabled = true;
-            EatOnStart.Enabled = true;
-            Reset.Enabled = true;
-            checkBox6.Enabled = true;
-            checkBox7.Enabled = true;
-            TeleportMode.Enabled = true;
-            ScanLocationCannotPicnic.Enabled = true;
-            OutbreakType.Enabled = true;
-            TimeCombo.Enabled = true;
-            poketype.Enabled = true;
-            ScanButton.Enabled = true;
-            OutbreakResetButton.Enabled = true;
-            SetTimeButton.Enabled = true;
-            XCoord.Enabled = true;
-            YCoord.Enabled = true;
-            ZCoord.Enabled = true;
-            Language.Enabled = true;
-            DateReset.Enabled = true;
-            OutbreakSpeciesBox.Enabled = OutbreakType.SelectedIndex > 0 || TimeCombo.SelectedIndex > 0;
-            OutbreakText.Enabled = OutbreakType.SelectedIndex > 0 || TimeCombo.SelectedIndex > 0;
-            if (FormCombo.Visible)
-                FormCombo.Enabled = OutbreakSpeciesBox.Enabled;
-            TeleportButton.Enabled = coordList.Count > 0;
-            TeleportIndex.Enabled = true;
-            TimeText.Enabled = true;
-            ShinyBoost.Enabled = true;
-            AutoReConnet.Enabled = true;
-            MapCheck.Enabled = true;
-            TimeZoneCombo.Enabled = true;
-            LastDateCombo.Enabled = true;
+            if (InvokeRequired)
+            {
+                Invoke(() =>
+                {
+                    InWater.Enabled = true;
+                    SandwichMode.Enabled = true;
+                    PicnicReset.Enabled = true;
+                    NonSaveMode.Enabled = true;
+                    EatOnStart.Enabled = true;
+                    Reset.Enabled = true;
+                    checkBox6.Enabled = true;
+                    checkBox7.Enabled = true;
+                    TeleportMode.Enabled = true;
+                    ScanLocationCannotPicnic.Enabled = true;
+                    OutbreakType.Enabled = true;
+                    TimeCombo.Enabled = true;
+                    poketype.Enabled = true;
+                    ScanButton.Enabled = true;
+                    OutbreakResetButton.Enabled = true;
+                    SetTimeButton.Enabled = true;
+                    XCoord.Enabled = true;
+                    YCoord.Enabled = true;
+                    ZCoord.Enabled = true;
+                    Language.Enabled = true;
+                    DateReset.Enabled = true;
+                    OutbreakSpeciesBox.Enabled = OutbreakType.SelectedIndex > 0 || TimeCombo.SelectedIndex > 0;
+                    OutbreakText.Enabled = OutbreakType.SelectedIndex > 0 || TimeCombo.SelectedIndex > 0;
+                    if (FormCombo.Visible)
+                        FormCombo.Enabled = OutbreakSpeciesBox.Enabled;
+                    TeleportButton.Enabled = coordList.Count > 0;
+                    TeleportIndex.Enabled = true;
+                    TimeText.Enabled = true;
+                    ShinyBoost.Enabled = true;
+                    AutoReConnet.Enabled = true;
+                    MapCheck.Enabled = true;
+                    TimeZoneCombo.Enabled = true;
+                    LastDateCombo.Enabled = true;
+                });
+            }
+            else
+            {
+                InWater.Enabled = true;
+                SandwichMode.Enabled = true;
+                PicnicReset.Enabled = true;
+                NonSaveMode.Enabled = true;
+                EatOnStart.Enabled = true;
+                Reset.Enabled = true;
+                checkBox6.Enabled = true;
+                checkBox7.Enabled = true;
+                TeleportMode.Enabled = true;
+                ScanLocationCannotPicnic.Enabled = true;
+                OutbreakType.Enabled = true;
+                TimeCombo.Enabled = true;
+                poketype.Enabled = true;
+                ScanButton.Enabled = true;
+                OutbreakResetButton.Enabled = true;
+                SetTimeButton.Enabled = true;
+                XCoord.Enabled = true;
+                YCoord.Enabled = true;
+                ZCoord.Enabled = true;
+                Language.Enabled = true;
+                DateReset.Enabled = true;
+                OutbreakSpeciesBox.Enabled = OutbreakType.SelectedIndex > 0 || TimeCombo.SelectedIndex > 0;
+                OutbreakText.Enabled = OutbreakType.SelectedIndex > 0 || TimeCombo.SelectedIndex > 0;
+                if (FormCombo.Visible)
+                    FormCombo.Enabled = OutbreakSpeciesBox.Enabled;
+                TeleportButton.Enabled = coordList.Count > 0;
+                TeleportIndex.Enabled = true;
+                TimeText.Enabled = true;
+                ShinyBoost.Enabled = true;
+                AutoReConnet.Enabled = true;
+                MapCheck.Enabled = true;
+                TimeZoneCombo.Enabled = true;
+                LastDateCombo.Enabled = true;
+            }
         }
     }
 }

@@ -12,9 +12,7 @@ public partial class ItemResultGridView : UserControl
     
     public async Task Populate(List<InventoryItem> itemSpan, int language)
     {
-        /*var rows = DGV_View.Rows;
-        rows.Clear();
-        rows = rows == null ? DGV_View.Rows : rows;*/
+        int Language = (LanguageID)language == LanguageID.English ? 1 : (LanguageID)language == LanguageID.Japanese ? 0 : language;
         await SpeedClear().ConfigureAwait(false);
         Image img;
         string url = string.Empty;
@@ -33,8 +31,7 @@ public partial class ItemResultGridView : UserControl
                 url = $"https://raw.githubusercontent.com/kwsch/PKHeX/master/PKHeX.Drawing.PokeSprite/Resources/img/Artwork%20Items/aitem_{item.Index}.png";
                 img = await GetItemImage(url).ConfigureAwait(false);
             }
-            //rows.Add(item.Count, img, GameInfo.GetStrings(language).itemlist[item.Index]);
-            DGV_View.Rows.Add(item.Count, img, GameInfo.GetStrings(language).itemlist[item.Index]);
+            DGV_View.Rows.Add(item.Count, img, GameInfo.GetStrings(Language).itemlist[item.Index]);
         }
     }
     public async Task<Image> GetItemImage(string url)
