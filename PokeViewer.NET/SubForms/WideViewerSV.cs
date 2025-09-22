@@ -1572,9 +1572,23 @@ namespace PokeViewer.NET.SubForms
                                 if (string.IsNullOrEmpty(SandwichMode.Text))
                                     SandwichMode.Text = SandwichMode.Items[SandwichMode.SelectedIndex]!.ToString();
                             });
+                            DisableOptions();
                             break;
                         }
                         await Task.Delay(0_500, token).ConfigureAwait(false);
+                        if (InvokeRequired)
+                        {
+                            Invoke(() =>
+                            {
+                                PokeType = poketype.SelectedIndex;
+                                SandwichModeIndex = SandwichMode.SelectedIndex;
+                            });
+                        }
+                        else
+                        {
+                            PokeType = poketype.SelectedIndex;
+                            SandwichModeIndex = SandwichMode.SelectedIndex;
+                        }
                         waitcount++;
                         if (waitcount > 30)
                         {
