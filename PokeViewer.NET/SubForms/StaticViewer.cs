@@ -50,6 +50,7 @@ namespace PokeViewer.NET.SubForms
         private byte TargetForm = 0;
         private readonly SimpleTrainerInfo TrainerInfo;
         private bool CollideTaskComplete = false;
+        private bool OverworldTaskCompleted = false;
         private Task OverworldTask = Task.Delay(1_000);
         private Task ScanTask = Task.Delay(1_000);
         private AutoResetEvent ScanEvent = new(false);
@@ -262,8 +263,9 @@ namespace PokeViewer.NET.SubForms
                         MessageBox.Show(this, "Process has been canceled!", "Process cencel", MessageBoxButtons.OK, MessageBoxIcon.Information);
                     EnableOptions();
                 }
-                catch (Exception)
+                catch (Exception ex)
                 {
+                    LogUtil.LogText(ex.ToString());
                     success = false;
                     if (Executor.SwitchConnection.Connected)
                     {
@@ -281,7 +283,7 @@ namespace PokeViewer.NET.SubForms
                     }
                     try
                     {
-                        await Task.Delay(300_000, token).ConfigureAwait(false);
+                        await Task.Delay(60_000, token).ConfigureAwait(false);
                         Executor.SwitchConnection.Reset();
                         if (!Executor.SwitchConnection.Connected)
                             throw new Exception("SwitchConnection can't reconnect!");
@@ -635,7 +637,7 @@ namespace PokeViewer.NET.SubForms
             
             var PlayerCoords = (await PlayerCoordRead(token).ConfigureAwait(false)).ToTuple();
             ScanEvent.WaitOne();
-            
+
             if (Math.Abs(TeleportCoords.Item1 - PlayerCoords.Item1) > 5 || Math.Abs(TeleportCoords.Item2 - PlayerCoords.Item2) > 5 || Math.Abs(TeleportCoords.Item3 - PlayerCoords.Item3) > 5)
             {
                 await CollideToSpot(X, Y, Z, token).ConfigureAwait(false);
@@ -658,6 +660,7 @@ namespace PokeViewer.NET.SubForms
         private void ResetTaskStatus()
         {
             CollideTaskComplete = false;
+            OverworldTaskCompleted = false;
             ScanEvent = new(false);
             OverworldEvent = new(false);
         }
@@ -755,9 +758,15 @@ namespace PokeViewer.NET.SubForms
                         {
                             await CollideToSpot(XCoord.Text, YCoord.Text, ZCoord.Text, token).ConfigureAwait(false);
                             CollideTaskComplete = true;
+                            while (!OverworldTaskCompleted)
+                                await Task.Delay(0_010, token).ConfigureAwait(false);
                         });
                         OverworldTask = RecoverToOverworldMulti(token);
-                        await Task.WhenAll(ScanTask, OverworldTask).ConfigureAwait(false);                        
+                        await Task.WhenAny(ScanTask, OverworldTask).ConfigureAwait(false);
+                        if (ScanTask.IsFaulted || OverworldTask.IsFaulted)
+                            throw new Exception($"{(ScanTask.IsFaulted ? ScanTask.Exception!.InnerException!.ToString() : OverworldTask.Exception!.InnerException!.ToString())}");
+                        if (ScanTask.IsCanceled || OverworldTask.IsCanceled)
+                            throw new OperationCanceledException();
                     }
                     else
                     {
@@ -768,9 +777,15 @@ namespace PokeViewer.NET.SubForms
                             await SetStick(SwitchStick.LEFT, 0, 30000, (int)DelayNum.Value, token).ConfigureAwait(false);
                             await SetStick(SwitchStick.LEFT, 0, 0, 0_500, token).ConfigureAwait(false);
                             CollideTaskComplete = true;
+                            while (!OverworldTaskCompleted)
+                                await Task.Delay(0_010, token).ConfigureAwait(false);
                         });
                         OverworldTask = RecoverToOverworldMulti(token);
-                        await Task.WhenAll(ScanTask, OverworldTask).ConfigureAwait(false);
+                        await Task.WhenAny(ScanTask, OverworldTask).ConfigureAwait(false);
+                        if (ScanTask.IsFaulted || OverworldTask.IsFaulted)
+                            throw new Exception($"{(ScanTask.IsFaulted ? ScanTask.Exception!.InnerException!.ToString() : OverworldTask.Exception!.InnerException!.ToString())}");
+                        if (ScanTask.IsCanceled || OverworldTask.IsCanceled)
+                            throw new OperationCanceledException();
                     }
 ReSave:
                     if (!GetCheckState(CoordCheck))
@@ -780,9 +795,15 @@ ReSave:
                         {
                             await GotoAcurateCoord(token).ConfigureAwait(false);
                             CollideTaskComplete = true;
+                            while (!OverworldTaskCompleted)
+                                await Task.Delay(0_010, token).ConfigureAwait(false);
                         });
-                        OverworldTask = RecoverToOverworldMulti(token);
-                        await Task.WhenAll(ScanTask, OverworldTask).ConfigureAwait(false);                        
+                        OverworldTask = RecoverToOverworldMulti(token);                            
+                        await Task.WhenAny(ScanTask, OverworldTask).ConfigureAwait(false);
+                        if (ScanTask.IsFaulted || OverworldTask.IsFaulted)
+                            throw new Exception($"{(ScanTask.IsFaulted ? ScanTask.Exception!.InnerException!.ToString() : OverworldTask.Exception!.InnerException!.ToString())}");
+                        if (ScanTask.IsCanceled || OverworldTask.IsCanceled)
+                            throw new OperationCanceledException();
                     }
                     else
                         await RecoverToOverworld(token).ConfigureAwait(false);
@@ -1303,7 +1324,7 @@ ReSave:
         }
         private async Task RecoverToOverworldMulti(CancellationToken token)
         {
-            //int B_Count = 0;
+            //int B_Count = 0;                        
             OverworldEvent.WaitOne();
 
             if (!Executor.SwitchConnection.Connected)
@@ -1324,13 +1345,13 @@ ReSave:
                     }
                     await RefreshOverworldOffset(token).ConfigureAwait(false);
                 }
-                await Task.Delay(0_500, token).ConfigureAwait(false);
                 if (CollideTaskComplete)
                 {
+                    OverworldTaskCompleted = true;
                     return;
                 }
                 else
-                {
+                {                                            
                     ScanEvent.Set();
                     OverworldEvent.WaitOne();
                 }
@@ -1657,9 +1678,19 @@ ReSave:
                         await InitilizeSessionOffsets(token).ConfigureAwait(false);
                         checkBox5.Checked = false;
                     }
-                    Task CollideTask = Task.Run(async () => { await CollideToCave(token).ConfigureAwait(false); CollideTaskComplete = true; });
+                    Task CollideTask = Task.Run(async () => 
+                    { 
+                        await CollideToCave(token).ConfigureAwait(false); 
+                        CollideTaskComplete = true;
+                        while (!OverworldTaskCompleted)
+                            await Task.Delay(0_010, token).ConfigureAwait(false);
+                    });
                     ResetTaskStatus();
-                    await Task.WhenAll(CollideTask, RecoverToOverworldMulti(token)).ConfigureAwait(false);
+                    await Task.WhenAny(CollideTask, RecoverToOverworldMulti(token)).ConfigureAwait(false);
+                    if (ScanTask.IsFaulted || OverworldTask.IsFaulted)
+                        throw new Exception($"{(ScanTask.IsFaulted ? ScanTask.Exception!.InnerException!.ToString() : OverworldTask.Exception!.InnerException!.ToString())}");
+                    if (ScanTask.IsCanceled || OverworldTask.IsCanceled)
+                        throw new OperationCanceledException();
                     MessageBox.Show("Completed!");
                 }
                 catch (OperationCanceledException)
@@ -1703,17 +1734,20 @@ ReSave:
                         checkBox5.Checked = false;
                     }
                     ResetTaskStatus();
-                    ScanTask = Task.Run(async () => { await CollideRead(token).ConfigureAwait(false); CollideTaskComplete = true; });
+                    ScanTask = Task.Run(async () => 
+                    { 
+                        await CollideRead(token).ConfigureAwait(false); 
+                        CollideTaskComplete = true; 
+                        while (!OverworldTaskCompleted)
+                            await Task.Delay(0_010, token).ConfigureAwait(false);
+                    });
                     OverworldTask = Task.Run(async () => { await RecoverToOverworldMulti(token).ConfigureAwait(false); });
-                    await Task.WhenAll(ScanTask, OverworldTask).ConfigureAwait(false);
+                    await Task.WhenAny(ScanTask, OverworldTask).ConfigureAwait(false);
+                    if (ScanTask.IsFaulted || OverworldTask.IsFaulted)
+                        throw new Exception($"{(ScanTask.IsFaulted ? ScanTask.Exception!.InnerException!.ToString() : OverworldTask.Exception!.InnerException!.ToString())}");
+                    if (ScanTask.IsCanceled || OverworldTask.IsCanceled)
+                        throw new OperationCanceledException();
                     MessageBox.Show("Completed!");
-                }
-                catch (ThreadAbortException ex)
-                {
-                    if (InvokeRequired)
-                        Invoke(() => MessageBox.Show(this, ex.ToString(), "Thread Abort Exception!"));
-                    else
-                        MessageBox.Show(this, ex.ToString(), "Thread Abort Exception!");                    
                 }
                 catch (OperationCanceledException)
                 {
@@ -1767,8 +1801,6 @@ ReSave:
                 }
 
                 cts.Cancel();
-                ScanEvent.Set();
-                OverworldEvent.Set();
                 canceled = true;
             }
         }

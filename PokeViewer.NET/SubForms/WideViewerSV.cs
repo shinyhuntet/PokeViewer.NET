@@ -91,6 +91,7 @@ namespace PokeViewer.NET.SubForms
         private readonly long DateCycle = (long)TimeSpan.FromMinutes(72).TotalSeconds;
         private readonly SimpleTrainerInfo TrainerInfo;
         private bool CollideTaskComplete = false;
+        private bool OverworldTaskComplete = false;
         private Task ScanTask = Task.Delay(1_000);
         private Task OverworldTask = Task.Delay(1_000);
         private AutoResetEvent ScanEvent = new(false);
@@ -367,7 +368,10 @@ namespace PokeViewer.NET.SubForms
                         FormCombo.Enabled = OutbreakSpeciesBox.Enabled;
                     DisableOptions();
                 }
-                ConnectionBox.Text = $"Switch Connection Connected: {Executor.SwitchConnection.Connected}{Environment.NewLine}Console Connection Connected: {Executor.Connection.Connected}";
+                if (InvokeRequired)
+                    Invoke(() => ConnectionBox.Text = $"Switch Connection Connected: {Executor.SwitchConnection.Connected}{Environment.NewLine}Console Connection Connected: {Executor.Connection.Connected}");
+                else
+                    ConnectionBox.Text = $"Switch Connection Connected: {Executor.SwitchConnection.Connected}{Environment.NewLine}Console Connection Connected: {Executor.Connection.Connected}";
                 canceled = false;
                 try
                 {
@@ -375,8 +379,19 @@ namespace PokeViewer.NET.SubForms
                     if (checkBox6.Checked && !ReConnect)
                     {
                         ResetTaskStatus();
-                        Task ReadTask = Task.Run(async () => { await CollideRead(token).ConfigureAwait(false); CollideTaskComplete = true; });
-                        await Task.WhenAll(ReadTask, RecoverToOverworld(token)).ConfigureAwait(false);
+                        ScanTask = Task.Run(async () => 
+                        {
+                            await CollideRead(token).ConfigureAwait(false); 
+                            CollideTaskComplete = true; 
+                            while (!OverworldTaskComplete)
+                                await Task.Delay(0_010, token).ConfigureAwait(false);
+                        });
+                        OverworldTask = RecoverToOverworld(token);
+                        await Task.WhenAny(ScanTask, OverworldTask).ConfigureAwait(false);
+                        if (ScanTask.IsFaulted || OverworldTask.IsFaulted)
+                            throw new Exception($"{(ScanTask.IsFaulted ? ScanTask.Exception!.InnerException!.ToString() : OverworldTask.Exception!.InnerException!.ToString())}");
+                        if (ScanTask.IsCanceled || OverworldTask.IsCanceled)
+                            throw new OperationCanceledException();
                     }
                     if (!ReConnect && GetCheckState(MapCheck))
                     {
@@ -385,29 +400,61 @@ namespace PokeViewer.NET.SubForms
                             if (string.IsNullOrEmpty(coordx) || string.IsNullOrEmpty(coordy) || string.IsNullOrEmpty(coordz))
                             {
                                 MessageBox.Show("Telport location is empty! Go to Teleport location.");
-                                Task ColledeRead = Task.Run(async () => { await CollideReadPro(token).ConfigureAwait(false); CollideTaskComplete = true; });
+                                ScanTask = Task.Run(async () => 
+                                { 
+                                    await CollideReadPro(token).ConfigureAwait(false); 
+                                    CollideTaskComplete = true; 
+                                    while (!OverworldTaskComplete)
+                                        await Task.Delay(0_010, token).ConfigureAwait(false);
+                                });
+                                OverworldTask = RecoverToOverworld(token);
                                 ResetTaskStatus();
-                                await Task.WhenAll(ColledeRead, RecoverToOverworld(token)).ConfigureAwait(false);                                
+                                await Task.WhenAny(ScanTask, OverworldTask).ConfigureAwait(false);
+                                if (ScanTask.IsFaulted || OverworldTask.IsFaulted)
+                                    throw new Exception($"{(ScanTask.IsFaulted ? ScanTask.Exception!.InnerException!.ToString() : OverworldTask.Exception!.InnerException!.ToString())}");
+                                if (ScanTask.IsCanceled || OverworldTask.IsCanceled)
+                                    throw new OperationCanceledException();
                             }
                             else
                             {
-                                Task CollideTask = Task.Run(async () => { await CollideToSpot(coordx, coordy, coordz, token).ConfigureAwait(false); CollideTaskComplete = true; });
+                                ScanTask = Task.Run(async () => 
+                                { 
+                                    await CollideToSpot(coordx, coordy, coordz, token).ConfigureAwait(false); 
+                                    CollideTaskComplete = true; 
+                                    while (!OverworldTaskComplete)
+                                        await Task.Delay(0_010, token).ConfigureAwait(false);
+                                });
+                                OverworldTask =  RecoverToOverworld(token);
                                 ResetTaskStatus();
-                                await Task.WhenAll(CollideTask, RecoverToOverworld(token)).ConfigureAwait(false);
+                                await Task.WhenAny(ScanTask, OverworldTask).ConfigureAwait(false);
+                                if (ScanTask.IsFaulted || OverworldTask.IsFaulted)
+                                    throw new Exception($"{(ScanTask.IsFaulted ? ScanTask.Exception!.InnerException!.ToString() : OverworldTask.Exception!.InnerException!.ToString())}");
+                                if (ScanTask.IsCanceled || OverworldTask.IsCanceled)
+                                    throw new OperationCanceledException();
                             }
                         }
                         await SetUpMap(token).ConfigureAwait(false);
-                        if(InvokeRequired)
+                        if (InvokeRequired)
                             Invoke(() => MapCheck.Checked = false);
                         else
                             MapCheck.Checked = false;
                     }
                     if (GetCheckState(checkBox7) && GetTextStatus(XCoord) && GetTextStatus(YCoord) && GetTextStatus(ZCoord))
                     {
-                        Task CollideTask = Task.Run(async() => { await CollideToCave(false, token).ConfigureAwait(false); CollideTaskComplete = true; });
+                        ScanTask = Task.Run(async () =>
+                        {
+                            await CollideToCave(false, token).ConfigureAwait(false);
+                            CollideTaskComplete = true; 
+                            while (!OverworldTaskComplete)
+                                await Task.Delay(0_010, token).ConfigureAwait(false);
+                        });
+                        OverworldTask = RecoverToOverworld(token);
                         ResetTaskStatus();
-                        await Task.WhenAll(CollideTask, RecoverToOverworld(token)).ConfigureAwait(false);
-                        
+                        await Task.WhenAny(ScanTask, OverworldTask).ConfigureAwait(false);
+                        if (ScanTask.IsFaulted || OverworldTask.IsFaulted)
+                            throw new Exception($"{(ScanTask.IsFaulted ? ScanTask.Exception!.InnerException!.ToString() : OverworldTask.Exception!.InnerException!.ToString())}");
+                        if (ScanTask.IsCanceled || OverworldTask.IsCanceled)
+                            throw new OperationCanceledException();
                     }
                     if (InvokeRequired)
                     {
@@ -475,7 +522,7 @@ namespace PokeViewer.NET.SubForms
                                     TimeCombo.SelectedIndex = 0;
                                     break;
                                 }
-                            }                                            
+                            }
                             if (enable)
                                 DisableOptions();
                         }
@@ -546,7 +593,7 @@ namespace PokeViewer.NET.SubForms
                     {
                         try
                         {
-                            await Task.Delay(300_000, token).ConfigureAwait(false);
+                            await Task.Delay(60_000, token).ConfigureAwait(false);
                             Executor.SwitchConnection.Reset();
                             if (!Executor.SwitchConnection.Connected)
                                 throw new Exception("SwitchConnection can't reconnect!");
@@ -827,6 +874,7 @@ namespace PokeViewer.NET.SubForms
         private void ResetTaskStatus()
         {
             CollideTaskComplete = false;
+            OverworldTaskComplete = false;
             FleeFailCount = 0;
             OverworldEvent = new(false);
             ScanEvent = new(false);
@@ -841,6 +889,8 @@ namespace PokeViewer.NET.SubForms
             await DisCollideOnly(token).ConfigureAwait(false);
             await Reposition(token).ConfigureAwait(false);
             CollideTaskComplete = true;
+            while (!OverworldTaskComplete)
+                await Task.Delay(0_010, token).ConfigureAwait(false);
         }
         private async Task CollideRead(CancellationToken token)
         {
@@ -933,7 +983,7 @@ namespace PokeViewer.NET.SubForms
                         if (FleeFailCount >= 5 || TeleportMode.Checked)
                             await DefeatPokemon(token).ConfigureAwait(false);
                         else
-                            await Flee(token).ConfigureAwait(false);
+                            await FastFlee(token).ConfigureAwait(false);
                     }
                     else
                     {
@@ -945,9 +995,11 @@ namespace PokeViewer.NET.SubForms
                     await RefreshOverworldOffset(token).ConfigureAwait(false);
                 }
                 //B_Count = 0;
-                await Task.Delay(0_500, token).ConfigureAwait(false);
                 if (CollideTaskComplete)
+                {
+                    OverworldTaskComplete = true;
                     return;
+                }
                 else
                 {
                     ScanEvent.Set();
@@ -1147,6 +1199,8 @@ namespace PokeViewer.NET.SubForms
             }
             OverworldEvent.Set();
             CollideTaskComplete = true;
+            while (!OverworldTaskComplete)
+                await Task.Delay(0_010, token).ConfigureAwait(false);
         }
         private async Task CollideToSpot(string x, string Y, string z, CancellationToken token)
         {
@@ -1323,7 +1377,10 @@ namespace PokeViewer.NET.SubForms
         {
             (float, float, float) TargetCoords = new();
             int Encounter = 0;
-            RateBox.Text = string.Empty;
+            if (InvokeRequired)
+                Invoke(() => RateBox.Text = string.Empty);
+            else
+                RateBox.Text = string.Empty;
             SpecFormsList = [];
             ulong init = 0;
             ulong lastsavedinit = 0;
@@ -1432,38 +1489,85 @@ namespace PokeViewer.NET.SubForms
                             }
                             if (result2 == DialogResult.No || string.IsNullOrEmpty(Invoke(() => XCoord.Text)) || string.IsNullOrEmpty(Invoke(() => YCoord.Text)) || string.IsNullOrEmpty(Invoke(() => ZCoord.Text)))
                             {
-                                Task CollideTask = Task.Run(async () => { await CollideRead(token).ConfigureAwait(false); CollideTaskComplete = true; });
+                                ScanTask = Task.Run(async () => 
+                                { 
+                                    await CollideRead(token).ConfigureAwait(false); 
+                                    CollideTaskComplete = true; 
+                                    while (!OverworldTaskComplete)
+                                        await Task.Delay(0_010, token).ConfigureAwait(false);
+                                });
+                                OverworldTask = RecoverToOverworld(token);
                                 ResetTaskStatus();
-                                await Task.WhenAll(CollideTask, RecoverToOverworld(token)).ConfigureAwait(false);
+                                await Task.WhenAny(ScanTask, OverworldTask).ConfigureAwait(false);
+                                if (ScanTask.IsFaulted || OverworldTask.IsFaulted)
+                                    throw new Exception($"{(ScanTask.IsFaulted ? ScanTask.Exception!.InnerException!.ToString() : OverworldTask.Exception!.InnerException!.ToString())}");
+                                if (ScanTask.IsCanceled || OverworldTask.IsCanceled)
+                                    throw new OperationCanceledException();
                             }
                             if (result1 == DialogResult.No || string.IsNullOrEmpty(coordx) || string.IsNullOrEmpty(coordy) || string.IsNullOrEmpty(coordz))
                             {
                                 MessageBox.Show(this, "Scan location coord is read! Go to Teleport location.", "Teleport Location Search", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                                Task CollideTask = Task.Run(async () => { await CollideReadPro(token).ConfigureAwait(false); CollideTaskComplete = true; });
+                                ScanTask = Task.Run(async () => 
+                                { 
+                                    await CollideReadPro(token).ConfigureAwait(false); 
+                                    CollideTaskComplete = true; 
+                                    while (!OverworldTaskComplete)
+                                        await Task.Delay(0_010, token).ConfigureAwait(false);
+                                });
+                                OverworldTask = RecoverToOverworld(token);
                                 ResetTaskStatus();
-                                await Task.WhenAll(CollideTask, RecoverToOverworld(token)).ConfigureAwait(false);
+                                await Task.WhenAny(ScanTask, OverworldTask).ConfigureAwait(false);
+                                if (ScanTask.IsFaulted || OverworldTask.IsFaulted)
+                                    throw new Exception($"{(ScanTask.IsFaulted ? ScanTask.Exception!.InnerException!.ToString() : OverworldTask.Exception!.InnerException!.ToString())}");
+                                if (ScanTask.IsCanceled || OverworldTask.IsCanceled)
+                                    throw new OperationCanceledException();
                             }
                         }
-                        Task CollideTaskScan = Task.Run(async() => { await CollideToSpot(Invoke(() => XCoord.Text), Invoke(() => YCoord.Text), Invoke(() => ZCoord.Text), token).ConfigureAwait(false); CollideTaskComplete = true; });
-                        Task CollideTaskTeleport = Task.Run(async() => { await CollideToSpot(coordx, coordy, coordz, token).ConfigureAwait(false); CollideTaskComplete = true; });
-                        Task OverworldTask = RecoverToOverworld(token);
+                        Task CollideTaskScan = Task.Run(async() => 
+                        { 
+                            await CollideToSpot(Invoke(() => XCoord.Text), Invoke(() => YCoord.Text), Invoke(() => ZCoord.Text), token).ConfigureAwait(false); 
+                            CollideTaskComplete = true; 
+                            while (!OverworldTaskComplete)
+                                await Task.Delay(0_010, token).ConfigureAwait(false);
+                        });
+                        Task CollideTaskTeleport = Task.Run(async() => 
+                        { 
+                            await CollideToSpot(coordx, coordy, coordz, token).ConfigureAwait(false); 
+                            CollideTaskComplete = true; 
+                            while (!OverworldTaskComplete)
+                                await Task.Delay(0_010, token).ConfigureAwait(false);
+                        });
+                        OverworldTask = RecoverToOverworld(token);
                         ResetTaskStatus();
                         if (!GetCheckState(EatOnStart))
-                            await Task.WhenAll(CollideTaskScan, OverworldTask).ConfigureAwait(false);
+                            await Task.WhenAny(CollideTaskScan, OverworldTask).ConfigureAwait(false);
                         else if (GetCheckState(ScanLocationCannotPicnic))
-                            await Task.WhenAll(CollideTaskTeleport, OverworldTask).ConfigureAwait(false);
+                            await Task.WhenAny(CollideTaskTeleport, OverworldTask).ConfigureAwait(false);
                         else
-                            await Task.WhenAll(CollideTaskScan, OverworldTask).ConfigureAwait(false);
+                            await Task.WhenAny(CollideTaskScan, OverworldTask).ConfigureAwait(false);
+                        if (CollideTaskScan.IsFaulted || CollideTaskTeleport.IsFaulted || OverworldTask.IsFaulted)
+                            throw new Exception($"{(CollideTaskScan.IsFaulted ? CollideTaskScan.Exception!.InnerException!.ToString() : CollideTaskTeleport.IsFaulted ? CollideTaskTeleport.Exception!.InnerException!.ToString() : OverworldTask.Exception!.InnerException!.ToString())}");
+                        if (CollideTaskScan.IsCanceled || CollideTaskTeleport.IsCanceled || OverworldTask.IsCanceled)
+                            throw new OperationCanceledException();
                         if (GetCheckState(EatOnStart))
                         {
                             await RefreshOnMountOffset(token).ConfigureAwait(false);
+                            ScanTask = DisCollideReposite(token);
                             ResetTaskStatus();
-                            await Task.WhenAll(DisCollideReposite(token), RecoverToOverworld(token)).ConfigureAwait(false);
-                        }                        
+                            await Task.WhenAny(ScanTask, OverworldTask).ConfigureAwait(false);
+                            if (ScanTask.IsFaulted || OverworldTask.IsFaulted)
+                                throw new Exception($"{(ScanTask.IsFaulted ? ScanTask.Exception!.InnerException!.ToString() : OverworldTask.Exception!.InnerException!.ToString())}");
+                            if (ScanTask.IsCanceled || OverworldTask.IsCanceled)
+                                throw new OperationCanceledException();
+                        }
                     }
-                    Task PicnicTask = PrepareToPicnic((!GetCheckState(EatOnStart) ? Invoke(() => XCoord.Text) : GetCheckState(ScanLocationCannotPicnic) ? coordx : Invoke(() => XCoord.Text)), (!GetCheckState(EatOnStart) ? Invoke(() => YCoord.Text) : GetCheckState(ScanLocationCannotPicnic) ? coordy : Invoke(() => YCoord.Text)), (!GetCheckState(EatOnStart) ? Invoke(() => ZCoord.Text) : GetCheckState(ScanLocationCannotPicnic) ? coordz : Invoke(() => ZCoord.Text)), token);
+                    ScanTask = PrepareToPicnic((!GetCheckState(EatOnStart) ? Invoke(() => XCoord.Text) : GetCheckState(ScanLocationCannotPicnic) ? coordx : Invoke(() => XCoord.Text)), (!GetCheckState(EatOnStart) ? Invoke(() => YCoord.Text) : GetCheckState(ScanLocationCannotPicnic) ? coordy : Invoke(() => YCoord.Text)), (!GetCheckState(EatOnStart) ? Invoke(() => ZCoord.Text) : GetCheckState(ScanLocationCannotPicnic) ? coordz : Invoke(() => ZCoord.Text)), token);
                     ResetTaskStatus();
-                    await Task.WhenAll(PicnicTask, RecoverToOverworld(token)).ConfigureAwait(false);
+                    await Task.WhenAny(ScanTask, OverworldTask).ConfigureAwait(false);
+                    if (ScanTask.IsFaulted || OverworldTask.IsFaulted)
+                        throw new Exception($"{(ScanTask.IsFaulted ? ScanTask.Exception!.InnerException!.ToString() : OverworldTask.Exception!.InnerException!.ToString())}");
+                    if (ScanTask.IsCanceled || OverworldTask.IsCanceled)
+                        throw new OperationCanceledException();
                     bool Teleport = false;
                     if (InvokeRequired)
                     {
@@ -1631,13 +1735,34 @@ namespace PokeViewer.NET.SubForms
                             return;
                         }
                         ResetTaskStatus();
-                        Task PicnicClose = Task.Run(async () => { await ClosePicnic(token).ConfigureAwait(false); CollideTaskComplete = true; });
-                        await Task.WhenAll(PicnicClose, RecoverToOverworld(token)).ConfigureAwait(false);
+                        ScanTask = Task.Run(async () => 
+                        { 
+                            await ClosePicnic(token).ConfigureAwait(false); 
+                            CollideTaskComplete = true; 
+                            while (!OverworldTaskComplete)
+                                await Task.Delay(0_010, token).ConfigureAwait(false);
+                        });
+                        OverworldTask = RecoverToOverworld(token);
+                        await Task.WhenAny(ScanTask, OverworldTask).ConfigureAwait(false);
+                        if (ScanTask.IsFaulted || OverworldTask.IsFaulted)
+                            throw new Exception($"{(ScanTask.IsFaulted ? ScanTask.Exception!.InnerException!.ToString() : OverworldTask.Exception!.InnerException!.ToString())}");
+                        if (ScanTask.IsCanceled || OverworldTask.IsCanceled)
+                            throw new OperationCanceledException();
                         if (GetCheckState(ScanLocationCannotPicnic))
                         {
-                            Task CollideTask = Task.Run(async () => { await CollideToSpot(Invoke(() => XCoord.Text), Invoke(() => YCoord.Text), Invoke(() => ZCoord.Text), token).ConfigureAwait(false); CollideTaskComplete = true; });
+                            ScanTask = Task.Run(async () => 
+                            { 
+                                await CollideToSpot(Invoke(() => XCoord.Text), Invoke(() => YCoord.Text), Invoke(() => ZCoord.Text), token).ConfigureAwait(false); 
+                                CollideTaskComplete = true; 
+                                while (!OverworldTaskComplete)
+                                    await Task.Delay(0_010, token).ConfigureAwait(false);
+                            });
                             ResetTaskStatus();
-                            await Task.WhenAll(CollideTask, RecoverToOverworld(token)).ConfigureAwait(false);
+                            await Task.WhenAny(ScanTask, OverworldTask).ConfigureAwait(false);
+                            if (ScanTask.IsFaulted || OverworldTask.IsFaulted)
+                                throw new Exception($"{(ScanTask.IsFaulted ? ScanTask.Exception!.InnerException!.ToString() : OverworldTask.Exception!.InnerException!.ToString())}");
+                            if (ScanTask.IsCanceled || OverworldTask.IsCanceled)
+                                throw new OperationCanceledException();
                             await Task.Delay(3_000).ConfigureAwait(false);
                         }
                     }
@@ -1680,12 +1805,23 @@ namespace PokeViewer.NET.SubForms
                     {
                         await OpenPicnic(token).ConfigureAwait(false);
                         ResetTaskStatus();
-                        Task PicnicClose = Task.Run(async () => { await ClosePicnic(token).ConfigureAwait(false); CollideTaskComplete = true; });
-                        await Task.WhenAll(PicnicClose, RecoverToOverworld(token)).ConfigureAwait(false);
+                        ScanTask = Task.Run(async () => 
+                        { 
+                            await ClosePicnic(token).ConfigureAwait(false); 
+                            CollideTaskComplete = true; 
+                            while (!OverworldTaskComplete)
+                                await Task.Delay(0_010, token).ConfigureAwait(false);
+                        });
+                        OverworldTask = RecoverToOverworld(token);
+                        await Task.WhenAny(ScanTask, OverworldTask).ConfigureAwait(false);
+                        if (ScanTask.IsFaulted || OverworldTask.IsFaulted)
+                            throw new Exception($"{(ScanTask.IsFaulted ? ScanTask.Exception!.InnerException!.ToString() : OverworldTask.Exception!.InnerException!.ToString())}");
+                        if (ScanTask.IsCanceled || OverworldTask.IsCanceled)
+                            throw new OperationCanceledException();
                     }
                     else if (!GetCheckState(NonSaveMode) && !initialize && !GetCheckState(TeleportMode))
                     {
-                        Task ScanTask = Task.Run(async () =>
+                        ScanTask = Task.Run(async () =>
                         {
                             await CollideReposite(token).ConfigureAwait(false);
                             ScanEvent.WaitOne();
@@ -1697,26 +1833,53 @@ namespace PokeViewer.NET.SubForms
                             await SetStick(SwitchStick.LEFT, 0, 0, 100, token).ConfigureAwait(false);
                             OverworldEvent.Set();
                             CollideTaskComplete = true;
+                            while (!OverworldTaskComplete)
+                                await Task.Delay(0_010, token).ConfigureAwait(false);
                         });
+                        OverworldTask = RecoverToOverworld(token);
                         ResetTaskStatus();
-                        await Task.WhenAll(ScanTask, RecoverToOverworld(token)).ConfigureAwait(false);                        
+                        await Task.WhenAny(ScanTask, OverworldTask).ConfigureAwait(false);
+                        if (ScanTask.IsFaulted || OverworldTask.IsFaulted)
+                            throw new Exception($"{(ScanTask.IsFaulted ? ScanTask.Exception!.InnerException!.ToString() : OverworldTask.Exception!.InnerException!.ToString())}");
+                        if (ScanTask.IsCanceled || OverworldTask.IsCanceled)
+                            throw new OperationCanceledException();
                     }
                     else if (!initialize && !GetCheckState(NonSaveMode))
                     {
-                        Task CollideTask = CollideToSpot(coordx, coordy, coordz, token);
-                        Task CollideScanTask = CollideToSpot(Invoke(() => XCoord.Text), Invoke(() => YCoord.Text), Invoke(() => ZCoord.Text), token);
+                        ScanTask = Task.Run(async () =>
+                        {
+                            await CollideToSpot(coordx, coordy, coordz, token).ConfigureAwait(false);
+                            await CollideToSpot(Invoke(() => XCoord.Text), Invoke(() => YCoord.Text), Invoke(() => ZCoord.Text), token).ConfigureAwait(false);
+                            CollideTaskComplete = true;
+                            while (!OverworldTaskComplete)
+                                await Task.Delay(0_010, token).ConfigureAwait(false);
+                        });
                         Task OverworldTask = RecoverToOverworld(token);
                         ResetTaskStatus();
-                        await Task.WhenAll(CollideTask, OverworldTask).ConfigureAwait(false);
-                        await Task.WhenAll(CollideScanTask, OverworldTask).ConfigureAwait(false);
+                        await Task.WhenAny(ScanTask, OverworldTask).ConfigureAwait(false);
+                        if (ScanTask.IsFaulted || OverworldTask.IsFaulted)
+                            throw new Exception($"{(ScanTask.IsFaulted ? ScanTask.Exception!.InnerException!.ToString() : OverworldTask.Exception!.InnerException!.ToString())}");
+                        if (ScanTask.IsCanceled || OverworldTask.IsCanceled)
+                            throw new OperationCanceledException();
                         await Task.Delay(1_000).ConfigureAwait(false);
                     }
                     if (GetCheckState(PicnicReset))
                     {
                         await RefreshOnMountOffset(token).ConfigureAwait(false);
                         ResetTaskStatus();
-                        Task DisCollideTask = Task.Run(async() => { await DisCollideOnly(token).ConfigureAwait(false); CollideTaskComplete = true; });
-                        await Task.WhenAll(DisCollideTask, RecoverToOverworld(token)).ConfigureAwait(false);
+                        ScanTask = Task.Run(async() => 
+                        { 
+                            await DisCollideOnly(token).ConfigureAwait(false); 
+                            CollideTaskComplete = true; 
+                            while (!OverworldTaskComplete)
+                                await Task.Delay(0_010, token).ConfigureAwait(false);
+                        });
+                        OverworldTask = RecoverToOverworld(token);
+                        await Task.WhenAny(ScanTask, OverworldTask).ConfigureAwait(false);
+                        if (ScanTask.IsFaulted || OverworldTask.IsFaulted)
+                            throw new Exception($"{(ScanTask.IsFaulted ? ScanTask.Exception!.InnerException!.ToString() : OverworldTask.Exception!.InnerException!.ToString())}");
+                        if (ScanTask.IsCanceled || OverworldTask.IsCanceled)
+                            throw new OperationCanceledException();
                     }
 ReSave:
                     ulong seed_new = 0;
@@ -1724,7 +1887,13 @@ ReSave:
                     {
                         await Task.Delay(2_000).ConfigureAwait(false);
                         ResetTaskStatus();
-                        await Task.WhenAll(PrepareSave(TargetCoords, token), RecoverToOverworld(token)).ConfigureAwait(false);
+                        ScanTask = PrepareSave(TargetCoords, token);
+                        OverworldTask = RecoverToOverworld(token);
+                        await Task.WhenAny(ScanTask, OverworldTask).ConfigureAwait(false);
+                        if (ScanTask.IsFaulted || OverworldTask.IsFaulted)
+                            throw new Exception($"{(ScanTask.IsFaulted ? ScanTask.Exception!.InnerException!.ToString() : OverworldTask.Exception!.InnerException!.ToString())}");
+                        if (ScanTask.IsCanceled || OverworldTask.IsCanceled)
+                            throw new OperationCanceledException();
                         seed_new = BitConverter.ToUInt64(await Executor.SwitchConnection.ReadBytesAbsoluteAsync(TeraRaidBlockOffset, 8, token).ConfigureAwait(false), 0);
                         long CurrentTime = -1;
                         CurrentTime = await GetUnixTime(token).ConfigureAwait(false);
@@ -1782,9 +1951,20 @@ ReSave:
                         {
                             if (GetCheckState(PicnicReset))
                             {
-                                Task Close = Task.Run(async () => { await ClosePicnic(token).ConfigureAwait(false); CollideTaskComplete = true; });
+                                ScanTask = Task.Run(async () => 
+                                { 
+                                    await ClosePicnic(token).ConfigureAwait(false); 
+                                    CollideTaskComplete = true; 
+                                    while (!OverworldTaskComplete)
+                                        await Task.Delay(0_010, token).ConfigureAwait(false);
+                                });
+                                OverworldTask = RecoverToOverworld(token);
                                 ResetTaskStatus();
-                                await Task.WhenAll(Close, RecoverToOverworld(token)).ConfigureAwait(false);
+                                await Task.WhenAny(ScanTask, OverworldTask).ConfigureAwait(false);
+                                if (ScanTask.IsFaulted || OverworldTask.IsFaulted)
+                                    throw new Exception($"{(ScanTask.IsFaulted ? ScanTask.Exception!.InnerException!.ToString() : OverworldTask.Exception!.InnerException!.ToString())}");
+                                if (ScanTask.IsCanceled || OverworldTask.IsCanceled)
+                                    throw new OperationCanceledException();
                             }
                             if (!await PlayerNotOnMount(token).ConfigureAwait(false))
                             {
@@ -2013,18 +2193,37 @@ ReSave:
                 await RefreshOnMountOffset(token).ConfigureAwait(false);
                 if (GetCheckState(ScanLocationCannotPicnic))
                 {
-                    Task CollideTask = Task.Run(async () => { await CollideToSpot(coordx, coordy, coordz, token).ConfigureAwait(false); CollideTaskComplete = true; });
+                    ScanTask = Task.Run(async () => 
+                    { 
+                        await CollideToSpot(coordx, coordy, coordz, token).ConfigureAwait(false); 
+                        CollideTaskComplete = true; 
+                        while (!OverworldTaskComplete)
+                            await Task.Delay(0_010, token).ConfigureAwait(false);
+                    });
                     ResetTaskStatus();
-                    await Task.WhenAll(CollideTask, RecoverToOverworld(token)).ConfigureAwait(false);
+                    await Task.WhenAny(ScanTask, OverworldTask).ConfigureAwait(false);
+                    if (ScanTask.IsFaulted || OverworldTask.IsFaulted)
+                        throw new Exception($"{(ScanTask.IsFaulted ? ScanTask.Exception!.InnerException!.ToString() : OverworldTask.Exception!.InnerException!.ToString())}");
+                    if (ScanTask.IsCanceled || OverworldTask.IsCanceled)
+                        throw new OperationCanceledException();
                 }
                 if (!await PlayerNotOnMount(token).ConfigureAwait(false))
                 {
                     ResetTaskStatus();
-                    await Task.WhenAll(DisCollideReposite(token), RecoverToOverworld(token)).ConfigureAwait(false);
+                    ScanTask = DisCollideReposite(token);
+                    await Task.WhenAny(ScanTask, OverworldTask).ConfigureAwait(false);
+                    if (ScanTask.IsFaulted || OverworldTask.IsFaulted)
+                        throw new Exception($"{(ScanTask.IsFaulted ? ScanTask.Exception!.InnerException!.ToString() : OverworldTask.Exception!.InnerException!.ToString())}");
+                    if (ScanTask.IsCanceled || OverworldTask.IsCanceled)
+                        throw new OperationCanceledException();
                 }
-                Task PicnicTask = PrepareToPicnic((GetCheckState(ScanLocationCannotPicnic) ? coordx : Invoke(() => XCoord.Text)), (GetCheckState(ScanLocationCannotPicnic) ? coordy : Invoke(() => YCoord.Text)), (GetCheckState(ScanLocationCannotPicnic) ? coordz : Invoke(() => ZCoord.Text)), token);
+                ScanTask = PrepareToPicnic((GetCheckState(ScanLocationCannotPicnic) ? coordx : Invoke(() => XCoord.Text)), (GetCheckState(ScanLocationCannotPicnic) ? coordy : Invoke(() => YCoord.Text)), (GetCheckState(ScanLocationCannotPicnic) ? coordz : Invoke(() => ZCoord.Text)), token);
                 ResetTaskStatus();
-                await Task.WhenAll(PicnicTask, RecoverToOverworld(token)).ConfigureAwait(false);
+                await Task.WhenAny(ScanTask, OverworldTask).ConfigureAwait(false);
+                if (ScanTask.IsFaulted || OverworldTask.IsFaulted)
+                    throw new Exception($"{(ScanTask.IsFaulted ? ScanTask.Exception!.InnerException!.ToString() : OverworldTask.Exception!.InnerException!.ToString())}");
+                if (ScanTask.IsCanceled || OverworldTask.IsCanceled)
+                    throw new OperationCanceledException();
                 if (GetCheckState(TeleportMode))
                     await Task.Delay(8_000, token).ConfigureAwait(false);
                 await OpenPicnic(token).ConfigureAwait(false);
@@ -2039,14 +2238,34 @@ ReSave:
                     EnableOptions();
                     return;
                 }
-                Task ClosePic = Task.Run(async () => { await ClosePicnic(token).ConfigureAwait(false); CollideTaskComplete = true; });
+                ScanTask = Task.Run(async () => 
+                { 
+                    await ClosePicnic(token).ConfigureAwait(false); 
+                    CollideTaskComplete = true; 
+                    while (!OverworldTaskComplete)
+                        await Task.Delay(0_010, token).ConfigureAwait(false);
+                });
                 ResetTaskStatus();
-                await Task.WhenAll(ClosePic, RecoverToOverworld(token)).ConfigureAwait(false);
+                await Task.WhenAny(ScanTask, OverworldTask).ConfigureAwait(false);
+                if (ScanTask.IsFaulted || OverworldTask.IsFaulted)
+                    throw new Exception($"{(ScanTask.IsFaulted ? ScanTask.Exception!.InnerException!.ToString() : OverworldTask.Exception!.InnerException!.ToString())}");
+                if (ScanTask.IsCanceled || OverworldTask.IsCanceled)
+                    throw new OperationCanceledException();
                 if (GetCheckState(ScanLocationCannotPicnic))
                 {
-                    Task CollideTask = Task.Run(async () => { await CollideToSpot(XCoord.Text, YCoord.Text, ZCoord.Text, token).ConfigureAwait(false); CollideTaskComplete = true; });
+                    ScanTask = Task.Run(async () => 
+                    { 
+                        await CollideToSpot(XCoord.Text, YCoord.Text, ZCoord.Text, token).ConfigureAwait(false); 
+                        CollideTaskComplete = true; 
+                        while (!OverworldTaskComplete)
+                            await Task.Delay(0_010, token).ConfigureAwait(false);
+                    });
                     ResetTaskStatus();
-                    await Task.WhenAll(CollideTask, RecoverToOverworld(token)).ConfigureAwait(false);
+                    await Task.WhenAny(ScanTask, OverworldTask).ConfigureAwait(false);
+                    if (ScanTask.IsFaulted || OverworldTask.IsFaulted)
+                        throw new Exception($"{(ScanTask.IsFaulted ? ScanTask.Exception!.InnerException!.ToString() : OverworldTask.Exception!.InnerException!.ToString())}");
+                    if (ScanTask.IsCanceled || OverworldTask.IsCanceled)
+                        throw new OperationCanceledException();
                     await Task.Delay(1_000).ConfigureAwait(false);
                 }
                 initialize = true;
@@ -2358,6 +2577,8 @@ ReSave:
             }
             OverworldEvent.Set();
             CollideTaskComplete = true;
+            while (!OverworldTaskComplete)
+                await Task.Delay(0_010, token).ConfigureAwait(false);
         }
         private async Task DefeatPokemon(CancellationToken token)
         {
@@ -2382,6 +2603,26 @@ ReSave:
                     break;
                 await Click(A, 0_500, token).ConfigureAwait(false);                
             }            
+        }
+        private async Task FastFlee(CancellationToken token)
+        {
+            while (await IsInBattle(token).ConfigureAwait(false) && !await IsOnOverworld(OverWorldOffset, token).ConfigureAwait(false))
+            {
+                for (int i = 0; i < 3; i++)
+                {
+                    await Click(B, 0_500, token).ConfigureAwait(false);
+                    if (!await IsInBattle(token).ConfigureAwait(false) || await IsOnOverworld(OverWorldOffset, token).ConfigureAwait(false))
+                        return;
+                }
+                await Click(DUP, 0_600, token).ConfigureAwait(false);
+                if (!await IsInBattle(token).ConfigureAwait(false) || await IsOnOverworld(OverWorldOffset, token).ConfigureAwait(false))
+                    break;
+                await Click(B, 0_500, token).ConfigureAwait(false);
+                if (!await IsInBattle(token).ConfigureAwait(false) || await IsOnOverworld(OverWorldOffset, token).ConfigureAwait(false))
+                    break;
+                await Click(A, 0_500, token).ConfigureAwait(false);
+                await RefreshOverworldOffset(token).ConfigureAwait(false);
+            }
         }
 
         private async Task<bool> IsInBattle(CancellationToken token)
@@ -3534,13 +3775,20 @@ recalc:
             Overworld = await IsOnOverworld(OverWorldOffset, token).ConfigureAwait(false);
             if (!Overworld)
             {
-                Task Reposite = Task.Run(async () =>
+                ScanTask = Task.Run(async () =>
                 {
                     await Reposition(token, true).ConfigureAwait(false);
-                    CollideTaskComplete = true;                    
+                    CollideTaskComplete = true;
+                    while (!OverworldTaskComplete)
+                        await Task.Delay(0_010, token).ConfigureAwait(false);
                 });
                 ResetTaskStatus();
-                await Task.WhenAll(Reposite, RecoverToOverworld(token)).ConfigureAwait(false);
+                OverworldTask = RecoverToOverworld(token);
+                await Task.WhenAny(ScanTask, OverworldTask).ConfigureAwait(false);
+                if (ScanTask.IsFaulted || OverworldTask.IsFaulted)
+                    throw new Exception($"{(ScanTask.IsFaulted ? ScanTask.Exception!.InnerException!.ToString() : OverworldTask.Exception!.InnerException!.ToString())}");
+                if (ScanTask.IsCanceled || OverworldTask.IsCanceled)
+                    throw new OperationCanceledException();
                 await OpenPicnic(token).ConfigureAwait(false);
             }
 
@@ -3675,8 +3923,6 @@ recalc:
                 }
 
                 cts.Cancel();
-                ScanEvent.Set();
-                OverworldEvent.Set();
             }
         }
         
