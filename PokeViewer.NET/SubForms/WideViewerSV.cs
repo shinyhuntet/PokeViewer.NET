@@ -593,7 +593,7 @@ namespace PokeViewer.NET.SubForms
                     {
                         try
                         {
-                            await Task.Delay(60_000, token).ConfigureAwait(false);
+                            await Task.Delay(180_000, token).ConfigureAwait(false);
                             Executor.SwitchConnection.Reset();
                             if (!Executor.SwitchConnection.Connected)
                                 throw new Exception("SwitchConnection can't reconnect!");
@@ -3821,7 +3821,7 @@ recalc:
                 MessageBox.Show("Coord List is Empty!");
                 return false;
             }
-            var coords = coordList[(int)TeleportIndex.Value];
+            var coords = coordList[Invoke(() => (int)TeleportIndex.Value)];
             if (coords == null)
             {
                 MessageBox.Show("Target Coord is null!");
@@ -3843,27 +3843,39 @@ recalc:
             if (!CoordisValid)
                 return;
             DisableOptions();
-            ConnectionBox.Text = $"Switch Connection Connected: {Executor.SwitchConnection.Connected}{Environment.NewLine}Console Connection Connected: {Executor.Connection.Connected}";
+            if (InvokeRequired)
+                Invoke(() => ConnectionBox.Text = $"Switch Connection Connected: {Executor.SwitchConnection.Connected}{Environment.NewLine}Console Connection Connected: {Executor.Connection.Connected}");
+            else
+                ConnectionBox.Text = $"Switch Connection Connected: {Executor.SwitchConnection.Connected}{Environment.NewLine}Console Connection Connected: {Executor.Connection.Connected}";
             canceled = false;
             using (cts = new CancellationTokenSource())
             {
                 var token = cts.Token;
                 try
                 {
-                    if (Reset.Checked)
+                    if (Invoke(() => Reset.Checked))
                     {
                         await InitilizeSessionOffsets(token).ConfigureAwait(false);
-                        Reset.Checked = false;
+                        if (InvokeRequired)
+                            Invoke(() => Reset.Checked = false);
+                        else
+                            Reset.Checked = false;
                     }
-                    await TeleportToMatch(coordList[(int)TeleportIndex.Value], token).ConfigureAwait(false);
+                    await TeleportToMatch(coordList[Invoke(() => (int)TeleportIndex.Value)], token).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException)
                 {
-                    MessageBox.Show(this, "Process has been canceled!", "Cancel", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    if (InvokeRequired)
+                        Invoke(() => MessageBox.Show(this, "Process has been canceled!", "Cancel", MessageBoxButtons.OK, MessageBoxIcon.Information));
+                    else
+                        MessageBox.Show(this, "Process has been canceled!", "Cancel", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
                 catch (Exception ex)
                 {
-                    ConnectionBox.Text = $"Switch Connection Connected: {Executor.SwitchConnection.Connected}{Environment.NewLine}Console Connection Connected: {Executor.Connection.Connected} ";
+                    if (InvokeRequired)
+                        Invoke(() => ConnectionBox.Text = $"Switch Connection Connected: {Executor.SwitchConnection.Connected}{Environment.NewLine}Console Connection Connected: {Executor.Connection.Connected} ");
+                    else
+                        ConnectionBox.Text = $"Switch Connection Connected: {Executor.SwitchConnection.Connected}{Environment.NewLine}Console Connection Connected: {Executor.Connection.Connected} ";
                     if (Executor.SwitchConnection.Connected)
                     {
                         try
@@ -3872,11 +3884,25 @@ recalc:
                         }
                         catch (SocketException soketEx)
                         {
-                            MessageBox.Show(this, soketEx.ToString(), "Sokect Connetion Exception!");
+                            if (InvokeRequired)
+                                Invoke(() => MessageBox.Show(this, soketEx.ToString(), "Sokect Connetion Exception!"));
+                            else
+                                MessageBox.Show(this, soketEx.ToString(), "Sokect Connetion Exception!");
                         }
                     }
-                    ConnectionBox.Text += $"{Environment.NewLine}Switch Connection Connected(Updated): {Executor.SwitchConnection.Connected}{Environment.NewLine}Console Connection Connected(Updated): {Executor.Connection.Connected} ";
-                    MessageBox.Show(this, ex.ToString(), "Exception Occured!");
+                    if (InvokeRequired)
+                    { 
+                        Invoke(() =>
+                        {
+                            ConnectionBox.Text += $"{Environment.NewLine}Switch Connection Connected(Updated): {Executor.SwitchConnection.Connected}{Environment.NewLine}Console Connection Connected(Updated): {Executor.Connection.Connected} ";
+                            MessageBox.Show(this, ex.ToString(), "Exception Occured!");
+                        });
+                    }
+                    else
+                    {
+                        ConnectionBox.Text += $"{Environment.NewLine}Switch Connection Connected(Updated): {Executor.SwitchConnection.Connected}{Environment.NewLine}Console Connection Connected(Updated): {Executor.Connection.Connected} ";
+                        MessageBox.Show(this, ex.ToString(), "Exception Occured!");
+                    }
                 }
             }
             canceled = true;

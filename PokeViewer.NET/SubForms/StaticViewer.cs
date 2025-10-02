@@ -283,7 +283,7 @@ namespace PokeViewer.NET.SubForms
                     }
                     try
                     {
-                        await Task.Delay(60_000, token).ConfigureAwait(false);
+                        await Task.Delay(180_000, token).ConfigureAwait(false);
                         Executor.SwitchConnection.Reset();
                         if (!Executor.SwitchConnection.Connected)
                             throw new Exception("SwitchConnection can't reconnect!");
