@@ -781,12 +781,8 @@ namespace PokeViewer.NET.SubForms
                         {
                             await CollideToSpot(XCoord.Text, YCoord.Text, ZCoord.Text, token).ConfigureAwait(false);
                             CollideTaskComplete = true;
-                            while (!OverworldTaskCompleted)
-                            {
-                                if (!OverworldEvent.WaitOne(0))
-                                    OverworldEvent.Set();
-                                await Task.Delay(0_010, token).ConfigureAwait(false);
-                            }
+                            while (!OverworldTaskCompleted)                            
+                                await Task.Delay(0_010, token).ConfigureAwait(false);                            
                         });
                         OverworldTask = RecoverToOverworldMulti(token);
                         await Task.WhenAny(ScanTask, OverworldTask).ConfigureAwait(false);
@@ -804,12 +800,8 @@ namespace PokeViewer.NET.SubForms
                             await SetStick(SwitchStick.LEFT, 0, 30000, (int)DelayNum.Value, token).ConfigureAwait(false);
                             await SetStick(SwitchStick.LEFT, 0, 0, 0_500, token).ConfigureAwait(false);
                             CollideTaskComplete = true;
-                            while (!OverworldTaskCompleted)
-                            {
-                                if (!OverworldEvent.WaitOne(0))
-                                    OverworldEvent.Set();
-                                await Task.Delay(0_010, token).ConfigureAwait(false);
-                            }
+                            while (!OverworldTaskCompleted)                            
+                                await Task.Delay(0_010, token).ConfigureAwait(false);                            
                         });
                         OverworldTask = RecoverToOverworldMulti(token);
                         await Task.WhenAny(ScanTask, OverworldTask).ConfigureAwait(false);
@@ -826,12 +818,8 @@ ReSave:
                         {
                             await GotoAcurateCoord(token).ConfigureAwait(false);
                             CollideTaskComplete = true;
-                            while (!OverworldTaskCompleted)
-                            {
-                                if (!OverworldEvent.WaitOne(0))
-                                    OverworldEvent.Set();
-                                await Task.Delay(0_010, token).ConfigureAwait(false);
-                            }
+                            while (!OverworldTaskCompleted)                            
+                                await Task.Delay(0_010, token).ConfigureAwait(false);                                
                         });
                         OverworldTask = RecoverToOverworldMulti(token);                            
                         await Task.WhenAny(ScanTask, OverworldTask).ConfigureAwait(false);
@@ -1384,6 +1372,7 @@ ReSave:
                     }
                     await RefreshOverworldOffset(token).ConfigureAwait(false);
                 }
+                await Task.Delay(0_500, token).ConfigureAwait(false);
                 if (CollideTaskComplete)
                 {
                     OverworldTaskCompleted = true;
@@ -1722,11 +1711,7 @@ ReSave:
                         await CollideToCave(token).ConfigureAwait(false); 
                         CollideTaskComplete = true;
                         while (!OverworldTaskCompleted)
-                        {
-                            if (!OverworldEvent.WaitOne(0))
-                                OverworldEvent.Set();
                             await Task.Delay(0_010, token).ConfigureAwait(false);
-                        }
                     });
                     ResetTaskStatus();
                     await Task.WhenAny(CollideTask, RecoverToOverworldMulti(token)).ConfigureAwait(false);
@@ -1782,11 +1767,7 @@ ReSave:
                         await CollideRead(token).ConfigureAwait(false); 
                         CollideTaskComplete = true;
                         while (!OverworldTaskCompleted)
-                        {
-                            if (!OverworldEvent.WaitOne(0))
-                                OverworldEvent.Set();
                             await Task.Delay(0_010, token).ConfigureAwait(false);
-                        }
                     });
                     OverworldTask = Task.Run(async () => { await RecoverToOverworldMulti(token).ConfigureAwait(false); });
                     await Task.WhenAny(ScanTask, OverworldTask).ConfigureAwait(false);
