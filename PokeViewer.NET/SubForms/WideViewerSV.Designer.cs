@@ -140,7 +140,9 @@ namespace PokeViewer.NET.SubForms
             TargetMonGroup = new GroupBox();
             OutbreakLabel = new Label();
             TimeGroup = new GroupBox();
+            UptimeLabel = new Label();
             MIscGroup = new GroupBox();
+            LanguageLabel = new Label();
             ToolTip1 = new ToolTip(components);
             OperationGroup = new GroupBox();
             ((System.ComponentModel.ISupportInitialize)pictureBox1).BeginInit();
@@ -196,7 +198,7 @@ namespace PokeViewer.NET.SubForms
             // 
             // StopConditions
             // 
-            StopConditions.Location = new Point(25, 51);
+            StopConditions.Location = new Point(161, 22);
             StopConditions.Name = "StopConditions";
             StopConditions.Size = new Size(106, 23);
             StopConditions.TabIndex = 0;
@@ -207,7 +209,7 @@ namespace PokeViewer.NET.SubForms
             // Language
             // 
             Language.FormattingEnabled = true;
-            Language.Location = new Point(124, 68);
+            Language.Location = new Point(74, 93);
             Language.Name = "Language";
             Language.Size = new Size(60, 23);
             Language.TabIndex = 61;
@@ -248,7 +250,7 @@ namespace PokeViewer.NET.SubForms
             // 
             // HardStopButton
             // 
-            HardStopButton.Location = new Point(95, 22);
+            HardStopButton.Location = new Point(90, 22);
             HardStopButton.Name = "HardStopButton";
             HardStopButton.Size = new Size(65, 23);
             HardStopButton.TabIndex = 47;
@@ -1018,7 +1020,7 @@ namespace PokeViewer.NET.SubForms
             // TimeLabel
             // 
             TimeLabel.AutoSize = true;
-            TimeLabel.Location = new Point(27, 83);
+            TimeLabel.Location = new Point(15, 83);
             TimeLabel.Name = "TimeLabel";
             TimeLabel.Size = new Size(60, 15);
             TimeLabel.TabIndex = 82;
@@ -1027,7 +1029,7 @@ namespace PokeViewer.NET.SubForms
             // TimeText
             // 
             TimeText.BackColor = SystemColors.Control;
-            TimeText.Location = new Point(105, 80);
+            TimeText.Location = new Point(85, 80);
             TimeText.Name = "TimeText";
             TimeText.ReadOnly = true;
             TimeText.Size = new Size(121, 23);
@@ -1111,7 +1113,7 @@ namespace PokeViewer.NET.SubForms
             // TimeZoneCombo
             // 
             TimeZoneCombo.FormattingEnabled = true;
-            TimeZoneCombo.Location = new Point(114, 109);
+            TimeZoneCombo.Location = new Point(10, 159);
             TimeZoneCombo.Name = "TimeZoneCombo";
             TimeZoneCombo.Size = new Size(121, 23);
             TimeZoneCombo.TabIndex = 93;
@@ -1119,7 +1121,7 @@ namespace PokeViewer.NET.SubForms
             // 
             // LastDateCombo
             // 
-            LastDateCombo.Location = new Point(17, 109);
+            LastDateCombo.Location = new Point(10, 130);
             LastDateCombo.Name = "LastDateCombo";
             LastDateCombo.Size = new Size(92, 23);
             LastDateCombo.TabIndex = 94;
@@ -1244,6 +1246,7 @@ namespace PokeViewer.NET.SubForms
             // 
             // TimeGroup
             // 
+            TimeGroup.Controls.Add(UptimeLabel);
             TimeGroup.Controls.Add(DateresetLabel);
             TimeGroup.Controls.Add(DateReset);
             TimeGroup.Controls.Add(SetTimeButton);
@@ -1254,32 +1257,51 @@ namespace PokeViewer.NET.SubForms
             TimeGroup.Controls.Add(TimeZoneCombo);
             TimeGroup.Location = new Point(743, 530);
             TimeGroup.Name = "TimeGroup";
-            TimeGroup.Size = new Size(242, 146);
+            TimeGroup.Size = new Size(235, 191);
             TimeGroup.TabIndex = 99;
             TimeGroup.TabStop = false;
             TimeGroup.Text = "Time Group";
             // 
+            // UptimeLabel
+            // 
+            UptimeLabel.AutoSize = true;
+            UptimeLabel.Location = new Point(15, 109);
+            UptimeLabel.Name = "UptimeLabel";
+            UptimeLabel.Size = new Size(48, 15);
+            UptimeLabel.TabIndex = 95;
+            UptimeLabel.Text = "Uptime:";
+            // 
             // MIscGroup
             // 
+            MIscGroup.Controls.Add(LanguageLabel);
             MIscGroup.Controls.Add(MapCheck);
             MIscGroup.Controls.Add(AutoReConnet);
             MIscGroup.Controls.Add(ShinyBoost);
             MIscGroup.Controls.Add(Language);
-            MIscGroup.Location = new Point(743, 682);
+            MIscGroup.Location = new Point(743, 792);
             MIscGroup.Name = "MIscGroup";
-            MIscGroup.Size = new Size(200, 100);
+            MIscGroup.Size = new Size(166, 122);
             MIscGroup.TabIndex = 100;
             MIscGroup.TabStop = false;
             MIscGroup.Text = "MIsc";
+            // 
+            // LanguageLabel
+            // 
+            LanguageLabel.AutoSize = true;
+            LanguageLabel.Location = new Point(6, 96);
+            LanguageLabel.Name = "LanguageLabel";
+            LanguageLabel.Size = new Size(62, 15);
+            LanguageLabel.TabIndex = 92;
+            LanguageLabel.Text = "Language:";
             // 
             // OperationGroup
             // 
             OperationGroup.Controls.Add(ScanButton);
             OperationGroup.Controls.Add(HardStopButton);
             OperationGroup.Controls.Add(StopConditions);
-            OperationGroup.Location = new Point(743, 792);
+            OperationGroup.Location = new Point(743, 727);
             OperationGroup.Name = "OperationGroup";
-            OperationGroup.Size = new Size(166, 82);
+            OperationGroup.Size = new Size(273, 55);
             OperationGroup.TabIndex = 101;
             OperationGroup.TabStop = false;
             OperationGroup.Text = "Operation Group";
@@ -1533,5 +1555,8 @@ namespace PokeViewer.NET.SubForms
         private CheckBox Reset;
         private CheckBox Stop;
         private Label OutbreakLabel;
+        private Label label1;
+        private Label LanguageLabel;
+        private Label UptimeLabel;
     }
 }

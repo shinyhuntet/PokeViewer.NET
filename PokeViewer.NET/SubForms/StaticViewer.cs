@@ -23,6 +23,8 @@ namespace PokeViewer.NET.SubForms
     public partial class StaticViewer : Form
     {
         private readonly ViewerState Executor;
+        private System.Timers.Timer timer = new System.Timers.Timer { Interval = 1000 };
+        private DateTime StartTime;
         protected ViewerOffsets Offsets { get; } = new();
         private static ulong BaseBlockKeyPointer = 0;
         public ulong PlayerOnMountOffset = 0;
@@ -205,8 +207,22 @@ namespace PokeViewer.NET.SubForms
                 await Task.Delay(0_100, CancellationToken.None).ConfigureAwait(false);
             }
         }
+        private void UptimeOnLoad(object sender, EventArgs e)
+        {
+            timer = new System.Timers.Timer { Interval = 1000 };
+            timer.Elapsed += (o, args) =>
+            {
+                if (InvokeRequired)
+                    Invoke(() => UptimeLabel.Text = $"Uptime: {StartTime - DateTime.Now:d\\.hh\\:mm\\:ss}");
+                else
+                    UptimeLabel.Text = $"Uptime: {StartTime - DateTime.Now:d\\.hh\\:mm\\:ss}";
+            };
+            timer.Start();
+        }
         private async void button1_Click(object sender, EventArgs e)
         {
+            StartTime = DateTime.Now;
+            UptimeOnLoad(sender, e);
             var success = true;
             using (cts = new CancellationTokenSource())
             {
@@ -217,11 +233,13 @@ namespace PokeViewer.NET.SubForms
                     {
                         if (PokemonCombo.SelectedIndex < 0)
                         {
+                            timer.Stop();
                             MessageBox.Show("Target Species is empty!");
                             return;
                         }
                         if (FormCombo.Visible && FormCombo.SelectedIndex < 0)
                         {
+                            timer.Stop();
                             MessageBox.Show("Target Form is empty!");
                             return;
                         }
@@ -231,17 +249,20 @@ namespace PokeViewer.NET.SubForms
                 {
                     if (PokemonCombo.SelectedIndex < 0)
                     {
+                        timer.Stop();
                         MessageBox.Show("Target Species is empty!");
                         return;
                     }
                     if (FormCombo.Visible && FormCombo.SelectedIndex < 0)
                     {
+                        timer.Stop();
                         MessageBox.Show("Target Form is empty!");
                         return;
                     }
                 }
                 if (encounterFilters.Count == 0 || encounterFilters.All(x => !x.Enabled))
                 {
+                    timer.Stop();
                     MessageBox.Show("No Filter Active!");
                     return;
                 }
@@ -256,6 +277,7 @@ namespace PokeViewer.NET.SubForms
                 }
                 catch (OperationCanceledException)
                 {
+                    timer.Stop();
                     success = false;
                     if (InvokeRequired)
                         Invoke(() => MessageBox.Show(this, "Process has been canceled!", "Process cencel", MessageBoxButtons.OK, MessageBoxIcon.Information));
@@ -265,6 +287,7 @@ namespace PokeViewer.NET.SubForms
                 }
                 catch (Exception ex)
                 {
+                    timer.Stop();
                     LogUtil.LogText(ex.ToString());
                     success = false;
                     if (Executor.SwitchConnection.Connected)
@@ -759,7 +782,11 @@ namespace PokeViewer.NET.SubForms
                             await CollideToSpot(XCoord.Text, YCoord.Text, ZCoord.Text, token).ConfigureAwait(false);
                             CollideTaskComplete = true;
                             while (!OverworldTaskCompleted)
+                            {
+                                if (!OverworldEvent.WaitOne(0))
+                                    OverworldEvent.Set();
                                 await Task.Delay(0_010, token).ConfigureAwait(false);
+                            }
                         });
                         OverworldTask = RecoverToOverworldMulti(token);
                         await Task.WhenAny(ScanTask, OverworldTask).ConfigureAwait(false);
@@ -778,7 +805,11 @@ namespace PokeViewer.NET.SubForms
                             await SetStick(SwitchStick.LEFT, 0, 0, 0_500, token).ConfigureAwait(false);
                             CollideTaskComplete = true;
                             while (!OverworldTaskCompleted)
+                            {
+                                if (!OverworldEvent.WaitOne(0))
+                                    OverworldEvent.Set();
                                 await Task.Delay(0_010, token).ConfigureAwait(false);
+                            }
                         });
                         OverworldTask = RecoverToOverworldMulti(token);
                         await Task.WhenAny(ScanTask, OverworldTask).ConfigureAwait(false);
@@ -796,7 +827,11 @@ ReSave:
                             await GotoAcurateCoord(token).ConfigureAwait(false);
                             CollideTaskComplete = true;
                             while (!OverworldTaskCompleted)
+                            {
+                                if (!OverworldEvent.WaitOne(0))
+                                    OverworldEvent.Set();
                                 await Task.Delay(0_010, token).ConfigureAwait(false);
+                            }
                         });
                         OverworldTask = RecoverToOverworldMulti(token);                            
                         await Task.WhenAny(ScanTask, OverworldTask).ConfigureAwait(false);
@@ -963,6 +998,7 @@ ReSave:
                 if (match)
                 {
                     await Click(HOME, 1_000, token).ConfigureAwait(false);
+                    timer.Stop();
                     if (InvokeRequired)
                         Invoke(() => TeleportIndex.Value = coordList.Count - 1);
                     else
@@ -975,6 +1011,7 @@ ReSave:
                 if (GetCheckState(checkBox4) || GetCheckState(NonSave))
                 {
                     await Click(HOME, 1_000, token).ConfigureAwait(false);
+                    timer.Stop();
                     if (InvokeRequired)
                         Invoke(() => TeleportIndex.Value = coordList.Count - 1);
                     else
@@ -990,6 +1027,7 @@ ReSave:
                 if(resetcount >= 50 && 100.00 * encountercount / resetcount < 40.00)
                 {
                     await Click(HOME, 1_000, token).ConfigureAwait(false);
+                    timer.Stop();
                     MessageBox.Show("Respawn Rate is too low. Change Scan Coordinates!");
                     EnableOptions();
                     canceled = true;
@@ -1002,6 +1040,7 @@ ReSave:
                 init = 0;
                 LastSaveInit = 0;
             }
+            timer.Stop();
             EnableOptions();
             canceled = true;
             return;
@@ -1683,7 +1722,11 @@ ReSave:
                         await CollideToCave(token).ConfigureAwait(false); 
                         CollideTaskComplete = true;
                         while (!OverworldTaskCompleted)
+                        {
+                            if (!OverworldEvent.WaitOne(0))
+                                OverworldEvent.Set();
                             await Task.Delay(0_010, token).ConfigureAwait(false);
+                        }
                     });
                     ResetTaskStatus();
                     await Task.WhenAny(CollideTask, RecoverToOverworldMulti(token)).ConfigureAwait(false);
@@ -1737,9 +1780,13 @@ ReSave:
                     ScanTask = Task.Run(async () => 
                     { 
                         await CollideRead(token).ConfigureAwait(false); 
-                        CollideTaskComplete = true; 
+                        CollideTaskComplete = true;
                         while (!OverworldTaskCompleted)
+                        {
+                            if (!OverworldEvent.WaitOne(0))
+                                OverworldEvent.Set();
                             await Task.Delay(0_010, token).ConfigureAwait(false);
+                        }
                     });
                     OverworldTask = Task.Run(async () => { await RecoverToOverworldMulti(token).ConfigureAwait(false); });
                     await Task.WhenAny(ScanTask, OverworldTask).ConfigureAwait(false);

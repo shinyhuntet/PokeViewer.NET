@@ -66,6 +66,7 @@ namespace PokeViewer.NET.SubForms
             PreSaveBox = new TextBox();
             DelayLabel = new Label();
             DelayNum = new NumericUpDown();
+            UptimeLabel = new Label();
             ((System.ComponentModel.ISupportInitialize)pictureBox1).BeginInit();
             ((System.ComponentModel.ISupportInitialize)pictureBox2).BeginInit();
             ((System.ComponentModel.ISupportInitialize)TeleportIndex).BeginInit();
@@ -412,11 +413,21 @@ namespace PokeViewer.NET.SubForms
             DelayNum.TabIndex = 100;
             DelayNum.TextAlign = HorizontalAlignment.Center;
             // 
+            // UptimeLabel
+            // 
+            UptimeLabel.AutoSize = true;
+            UptimeLabel.Location = new Point(33, 795);
+            UptimeLabel.Name = "UptimeLabel";
+            UptimeLabel.Size = new Size(48, 15);
+            UptimeLabel.TabIndex = 101;
+            UptimeLabel.Text = "Uptime:";
+            // 
             // StaticViewer
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
-            ClientSize = new Size(427, 799);
+            ClientSize = new Size(427, 819);
+            Controls.Add(UptimeLabel);
             Controls.Add(DelayNum);
             Controls.Add(DelayLabel);
             Controls.Add(PreSaveBox);
@@ -503,5 +514,6 @@ namespace PokeViewer.NET.SubForms
         private TextBox PreSaveBox;
         private Label DelayLabel;
         private NumericUpDown DelayNum;
+        private Label UptimeLabel;
     }
 }
