@@ -1503,11 +1503,17 @@ namespace PokeViewer.NET.SubForms
                         {
                             if (!string.IsNullOrEmpty(coordx) && !string.IsNullOrEmpty(coordy) && !string.IsNullOrEmpty(coordz))
                             {
-                                result1 = MessageBox.Show(this, "Teleport Location is not empty. continue in same location?", "Teleport location prompt", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+                                if (InvokeRequired)
+                                    Invoke(() => result1 = MessageBox.Show(this, "Teleport Location is not empty. continue in same location?", "Teleport location prompt", MessageBoxButtons.YesNo, MessageBoxIcon.Question));
+                                else
+                                    result1 = MessageBox.Show(this, "Teleport Location is not empty. continue in same location?", "Teleport location prompt", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
                             }
                             if (!string.IsNullOrEmpty(Invoke(() => XCoord.Text)) && !string.IsNullOrEmpty(Invoke(() => YCoord.Text)) && !string.IsNullOrEmpty(Invoke(() => ZCoord.Text)))
                             {
-                                result2 = MessageBox.Show(this, "Scan Location is not empty. continue in same location?", "Scan location prompt", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+                                if (InvokeRequired)
+                                    Invoke(() => result2 = MessageBox.Show(this, "Scan Location is not empty. continue in same location?", "Scan location prompt", MessageBoxButtons.YesNo, MessageBoxIcon.Question));
+                                else
+                                    result2 = MessageBox.Show(this, "Scan Location is not empty. continue in same location?", "Scan location prompt", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
                             }
                             if (result2 == DialogResult.No || string.IsNullOrEmpty(Invoke(() => XCoord.Text)) || string.IsNullOrEmpty(Invoke(() => YCoord.Text)) || string.IsNullOrEmpty(Invoke(() => ZCoord.Text)))
                             {
@@ -1528,7 +1534,10 @@ namespace PokeViewer.NET.SubForms
                             }
                             if (result1 == DialogResult.No || string.IsNullOrEmpty(coordx) || string.IsNullOrEmpty(coordy) || string.IsNullOrEmpty(coordz))
                             {
-                                MessageBox.Show(this, "Scan location coord is read! Go to Teleport location.", "Teleport Location Search", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                                if (InvokeRequired)
+                                    Invoke(() => MessageBox.Show(this, "Scan location coord is read! Go to Teleport location.", "Teleport Location Search", MessageBoxButtons.OK, MessageBoxIcon.Information));
+                                else
+                                    MessageBox.Show(this, "Scan location coord is read! Go to Teleport location.", "Teleport Location Search", MessageBoxButtons.OK, MessageBoxIcon.Information);
                                 ResetTaskStatus();
                                 ScanTask = Task.Run(async () => 
                                 { 
