@@ -1554,32 +1554,58 @@ namespace PokeViewer.NET.SubForms
                                     throw new OperationCanceledException();
                             }
                         }
-                        ResetTaskStatus();
-                        Task CollideTaskScan = Task.Run(async() => 
-                        { 
-                            await CollideToSpot(Invoke(() => XCoord.Text), Invoke(() => YCoord.Text), Invoke(() => ZCoord.Text), token).ConfigureAwait(false); 
-                            CollideTaskComplete = true;
-                            while (!OverworldTaskComplete)
-                                await Task.Delay(0_010, token).ConfigureAwait(false);
-                        });
-                        Task CollideTaskTeleport = Task.Run(async() => 
-                        { 
-                            await CollideToSpot(coordx, coordy, coordz, token).ConfigureAwait(false); 
-                            CollideTaskComplete = true;
-                            while (!OverworldTaskComplete)
-                                await Task.Delay(0_010, token).ConfigureAwait(false);
-                        });
-                        OverworldTask = RecoverToOverworld(token);
                         if (!GetCheckState(EatOnStart))
-                            await Task.WhenAny(CollideTaskScan, OverworldTask).ConfigureAwait(false);
+                        {
+                            ResetTaskStatus();
+                            ScanTask = Task.Run(async () =>
+                            {
+                                await CollideToSpot(Invoke(() => XCoord.Text), Invoke(() => YCoord.Text), Invoke(() => ZCoord.Text), token).ConfigureAwait(false);
+                                CollideTaskComplete = true;
+                                while (!OverworldTaskComplete)
+                                    await Task.Delay(0_010, token).ConfigureAwait(false);
+                            });
+                            OverworldTask = RecoverToOverworld(token);
+                            await Task.WhenAny(ScanTask, OverworldTask).ConfigureAwait(false);
+                            if (ScanTask.IsFaulted || OverworldTask.IsFaulted)
+                                throw new Exception($"{(ScanTask.IsFaulted ? ScanTask.Exception!.InnerException!.ToString() : OverworldTask.Exception!.InnerException!.ToString())}");
+                            if (ScanTask.IsCanceled || OverworldTask.IsCanceled)
+                                throw new OperationCanceledException();
+                        }
                         else if (GetCheckState(ScanLocationCannotPicnic))
-                            await Task.WhenAny(CollideTaskTeleport, OverworldTask).ConfigureAwait(false);
+                        {
+                            ResetTaskStatus();
+                            ScanTask = Task.Run(async () =>
+                            {
+                                await CollideToSpot(coordx, coordy, coordz, token).ConfigureAwait(false);
+                                CollideTaskComplete = true;
+                                while (!OverworldTaskComplete)
+                                    await Task.Delay(0_010, token).ConfigureAwait(false);
+                            });
+                            OverworldTask = RecoverToOverworld(token);
+                            await Task.WhenAny(ScanTask, OverworldTask).ConfigureAwait(false);
+                            if (ScanTask.IsFaulted || OverworldTask.IsFaulted)
+                                throw new Exception($"{(ScanTask.IsFaulted ? ScanTask.Exception!.InnerException!.ToString() : OverworldTask.Exception!.InnerException!.ToString())}");
+                            if (ScanTask.IsCanceled || OverworldTask.IsCanceled)
+                                throw new OperationCanceledException();
+                        }
                         else
-                            await Task.WhenAny(CollideTaskScan, OverworldTask).ConfigureAwait(false);
-                        if (CollideTaskScan.IsFaulted || CollideTaskTeleport.IsFaulted || OverworldTask.IsFaulted)
-                            throw new Exception($"{(CollideTaskScan.IsFaulted ? CollideTaskScan.Exception!.InnerException!.ToString() : CollideTaskTeleport.IsFaulted ? CollideTaskTeleport.Exception!.InnerException!.ToString() : OverworldTask.Exception!.InnerException!.ToString())}");
-                        if (CollideTaskScan.IsCanceled || CollideTaskTeleport.IsCanceled || OverworldTask.IsCanceled)
-                            throw new OperationCanceledException();
+
+                        {
+                            ResetTaskStatus();
+                            ScanTask = Task.Run(async () =>
+                            {
+                                await CollideToSpot(Invoke(() => XCoord.Text), Invoke(() => YCoord.Text), Invoke(() => ZCoord.Text), token).ConfigureAwait(false);
+                                CollideTaskComplete = true;
+                                while (!OverworldTaskComplete)
+                                    await Task.Delay(0_010, token).ConfigureAwait(false);
+                            });
+                            OverworldTask = RecoverToOverworld(token);
+                            await Task.WhenAny(ScanTask, OverworldTask).ConfigureAwait(false);
+                            if (ScanTask.IsFaulted || OverworldTask.IsFaulted)
+                                throw new Exception($"{(ScanTask.IsFaulted ? ScanTask.Exception!.InnerException!.ToString() : OverworldTask.Exception!.InnerException!.ToString())}");
+                            if (ScanTask.IsCanceled || OverworldTask.IsCanceled)
+                                throw new OperationCanceledException();
+                        }
                         if (GetCheckState(EatOnStart))
                         {
                             await RefreshOnMountOffset(token).ConfigureAwait(false);
@@ -1886,6 +1912,7 @@ namespace PokeViewer.NET.SubForms
                         ScanTask = Task.Run(async () =>
                         {
                             await CollideToSpot(coordx, coordy, coordz, token).ConfigureAwait(false);
+                            ScanEvent.WaitOne();
                             await CollideToSpot(Invoke(() => XCoord.Text), Invoke(() => YCoord.Text), Invoke(() => ZCoord.Text), token).ConfigureAwait(false);
                             CollideTaskComplete = true;
                             while (!OverworldTaskComplete)
