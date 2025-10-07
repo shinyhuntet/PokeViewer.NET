@@ -99,7 +99,8 @@ namespace PokeViewer.NET.SubForms
         private Task OverworldTask = Task.Delay(1_000);
         private AutoResetEvent ScanEvent = new(false);
         private AutoResetEvent OverworldEvent = new(false);
-
+        private bool IsInTeleportLocation = false;
+        private bool IgnnoreBattle = false;
         public void LoadOutbreakCache()
         {
             for (int i = 0; i < 18; i++)
@@ -351,6 +352,7 @@ namespace PokeViewer.NET.SubForms
             StartTime = DateTime.Now;
             UptimeOnLoad(sender, e);
             var success = true;
+            IsInTeleportLocation = false;
             using (cts = new CancellationTokenSource())
             {
                 var token = cts.Token;
@@ -434,6 +436,7 @@ namespace PokeViewer.NET.SubForms
                                     throw new Exception($"{(ScanTask.IsFaulted ? ScanTask.Exception!.InnerException!.ToString() : OverworldTask.Exception!.InnerException!.ToString())}");
                                 if (ScanTask.IsCanceled || OverworldTask.IsCanceled)
                                     throw new OperationCanceledException();
+                                IgnnoreBattle = await IsInBattle(token).ConfigureAwait(false);
                             }
                             else
                             {
@@ -993,13 +996,12 @@ namespace PokeViewer.NET.SubForms
             //int B_Count = 0;
             while (!token.IsCancellationRequested)
             {
-
                 while (!await IsOnOverworld(OverWorldOffset, token).ConfigureAwait(false))
                 {
-                    if (await IsInBattle(token).ConfigureAwait(false))
+                    if (await IsInBattle(token).ConfigureAwait(false) && !SkipBattleCheck())
                     {
                         FleeFailCount++;
-                        if (FleeFailCount >= 5 || TeleportMode.Checked)
+                        if (FleeFailCount >= 5 || Invoke(() => TeleportMode.Checked))
                             await DefeatPokemon(token).ConfigureAwait(false);
                         else
                             await FastFlee(token).ConfigureAwait(false);
@@ -1211,8 +1213,11 @@ namespace PokeViewer.NET.SubForms
                 await RefreshOnMountOffset(token).ConfigureAwait(false);
                 await CollideToSpot(x, Y, z, token).ConfigureAwait(false);
                 ScanEvent.WaitOne();
+                if (Teleport && GetCheckState(ScanLocationCannotPicnic))
+                    IsInTeleportLocation = true;
                 await DisCollideOnly(token).ConfigureAwait(false);
                 await Reposition(token).ConfigureAwait(false);
+                IsInTeleportLocation = false;
                 ScanEvent.WaitOne();
                 await PrepareToPicnic(x, Y, z, token).ConfigureAwait(false);
                 return;
@@ -1552,6 +1557,7 @@ namespace PokeViewer.NET.SubForms
                                     throw new Exception($"{(ScanTask.IsFaulted ? ScanTask.Exception!.InnerException!.ToString() : OverworldTask.Exception!.InnerException!.ToString())}");
                                 if (ScanTask.IsCanceled || OverworldTask.IsCanceled)
                                     throw new OperationCanceledException();
+                                IgnnoreBattle = await IsInBattle(token).ConfigureAwait(false);
                             }
                         }
                         if (!GetCheckState(EatOnStart))
@@ -1569,7 +1575,7 @@ namespace PokeViewer.NET.SubForms
                             if (ScanTask.IsFaulted || OverworldTask.IsFaulted)
                                 throw new Exception($"{(ScanTask.IsFaulted ? ScanTask.Exception!.InnerException!.ToString() : OverworldTask.Exception!.InnerException!.ToString())}");
                             if (ScanTask.IsCanceled || OverworldTask.IsCanceled)
-                                throw new OperationCanceledException();
+                                throw new OperationCanceledException();                            
                         }
                         else if (GetCheckState(ScanLocationCannotPicnic))
                         {
@@ -1587,6 +1593,7 @@ namespace PokeViewer.NET.SubForms
                                 throw new Exception($"{(ScanTask.IsFaulted ? ScanTask.Exception!.InnerException!.ToString() : OverworldTask.Exception!.InnerException!.ToString())}");
                             if (ScanTask.IsCanceled || OverworldTask.IsCanceled)
                                 throw new OperationCanceledException();
+                            IsInTeleportLocation = true;
                         }
                         else
 
@@ -1604,7 +1611,7 @@ namespace PokeViewer.NET.SubForms
                             if (ScanTask.IsFaulted || OverworldTask.IsFaulted)
                                 throw new Exception($"{(ScanTask.IsFaulted ? ScanTask.Exception!.InnerException!.ToString() : OverworldTask.Exception!.InnerException!.ToString())}");
                             if (ScanTask.IsCanceled || OverworldTask.IsCanceled)
-                                throw new OperationCanceledException();
+                                throw new OperationCanceledException();                            
                         }
                         if (GetCheckState(EatOnStart))
                         {
@@ -1617,6 +1624,7 @@ namespace PokeViewer.NET.SubForms
                                 throw new Exception($"{(ScanTask.IsFaulted ? ScanTask.Exception!.InnerException!.ToString() : OverworldTask.Exception!.InnerException!.ToString())}");
                             if (ScanTask.IsCanceled || OverworldTask.IsCanceled)
                                 throw new OperationCanceledException();
+                            IsInTeleportLocation = false;
                         }
                     }
                     ResetTaskStatus();
@@ -1924,7 +1932,7 @@ namespace PokeViewer.NET.SubForms
                             throw new Exception($"{(ScanTask.IsFaulted ? ScanTask.Exception!.InnerException!.ToString() : OverworldTask.Exception!.InnerException!.ToString())}");
                         if (ScanTask.IsCanceled || OverworldTask.IsCanceled)
                             throw new OperationCanceledException();
-                        await Task.Delay(1_000).ConfigureAwait(false);
+                        await Task.Delay(2_000).ConfigureAwait(false);
                     }
                     if (GetCheckState(PicnicReset))
                     {
@@ -2274,6 +2282,7 @@ ReSave:
                         throw new Exception($"{(ScanTask.IsFaulted ? ScanTask.Exception!.InnerException!.ToString() : OverworldTask.Exception!.InnerException!.ToString())}");
                     if (ScanTask.IsCanceled || OverworldTask.IsCanceled)
                         throw new OperationCanceledException();
+                    IsInTeleportLocation = true;
                 }
                 if (!await PlayerNotOnMount(token).ConfigureAwait(false))
                 {
@@ -2286,6 +2295,7 @@ ReSave:
                     if (ScanTask.IsCanceled || OverworldTask.IsCanceled)
                         throw new OperationCanceledException();
                 }
+                IsInTeleportLocation = false;
                 ResetTaskStatus();
                 ScanTask = PrepareToPicnic((GetCheckState(ScanLocationCannotPicnic) ? coordx : Invoke(() => XCoord.Text)), (GetCheckState(ScanLocationCannotPicnic) ? coordy : Invoke(() => YCoord.Text)), (GetCheckState(ScanLocationCannotPicnic) ? coordz : Invoke(() => ZCoord.Text)), token);
                 OverworldTask = RecoverToOverworld(token);
@@ -2347,6 +2357,16 @@ ReSave:
             EnableOptions();
             return;
         }
+        private bool SkipBattleCheck()
+        {
+            bool Teleport = false;
+            if (InvokeRequired)
+                Invoke(() => Teleport = TeleportMode.Checked);
+            else
+                Teleport = TeleportMode.Checked;
+            return Teleport && IgnnoreBattle && IsInTeleportLocation;
+        }
+        
         private async Task<(ulong, ulong)> GetLastSaveTime(ulong init, CancellationToken token)
         {
             var data = await ReadBlock(BlocksOverworld.LastSaved, init, token).ConfigureAwait(false);
@@ -2656,8 +2676,8 @@ ReSave:
         }
         private async Task DefeatPokemon(CancellationToken token)
         {
-            while (await IsInBattle(token).ConfigureAwait(false))
-                await Click(A, 0_800, token).ConfigureAwait(false);
+            while (await IsInBattle(token).ConfigureAwait(false))            
+                await Click(A, 0_800, token).ConfigureAwait(false);                            
         }
         private async Task Flee(CancellationToken token)
         {
@@ -2704,7 +2724,7 @@ ReSave:
             RefreshConnection();
 
             var data = await Executor.SwitchConnection.ReadBytesMainAsync(Offsets.IsInBattle, 1, token).ConfigureAwait(false);
-            return data[0] <= 0x05;
+            return data[0] != 0x06;
         }
         private async Task InitilizeSessionOffsets(CancellationToken token)
         {
