@@ -100,7 +100,7 @@ namespace PokeViewer.NET.SubForms
         private AutoResetEvent ScanEvent = new(false);
         private AutoResetEvent OverworldEvent = new(false);
         private bool IsInTeleportLocation = false;
-        private bool IgnnoreBattle = false;
+        private bool IgnoreBattle = false;
         public void LoadOutbreakCache()
         {
             for (int i = 0; i < 18; i++)
@@ -436,7 +436,7 @@ namespace PokeViewer.NET.SubForms
                                     throw new Exception($"{(ScanTask.IsFaulted ? ScanTask.Exception!.InnerException!.ToString() : OverworldTask.Exception!.InnerException!.ToString())}");
                                 if (ScanTask.IsCanceled || OverworldTask.IsCanceled)
                                     throw new OperationCanceledException();
-                                IgnnoreBattle = await IsInBattle(token).ConfigureAwait(false);
+                                IgnoreBattle = await IsInBattle(token).ConfigureAwait(false);
                             }
                             else
                             {
@@ -1557,7 +1557,7 @@ namespace PokeViewer.NET.SubForms
                                     throw new Exception($"{(ScanTask.IsFaulted ? ScanTask.Exception!.InnerException!.ToString() : OverworldTask.Exception!.InnerException!.ToString())}");
                                 if (ScanTask.IsCanceled || OverworldTask.IsCanceled)
                                     throw new OperationCanceledException();
-                                IgnnoreBattle = await IsInBattle(token).ConfigureAwait(false);
+                                IgnoreBattle = await IsInBattle(token).ConfigureAwait(false);
                             }
                         }
                         if (!GetCheckState(EatOnStart))
@@ -1916,6 +1916,7 @@ namespace PokeViewer.NET.SubForms
                     }
                     else if (!initialize && !GetCheckState(NonSaveMode))
                     {
+                        await Click(B, 0_600, token).ConfigureAwait(false);
                         ResetTaskStatus();
                         ScanTask = Task.Run(async () =>
                         {
@@ -2257,7 +2258,10 @@ ReSave:
                         await Click(HOME, 1_000, token).ConfigureAwait(false);
                         timer.Stop();
                         EnableOptions();
-                        MessageBox.Show(this, "Target Outbreak Population is less than 50%");
+                        if (InvokeRequired)
+                            Invoke(() => MessageBox.Show(this, "Target Outbreak Population is less than 50%"));
+                        else
+                            MessageBox.Show(this, "Target Outbreak Population is less than 50%");
                         return;
                     }
                 }
@@ -2364,7 +2368,7 @@ ReSave:
                 Invoke(() => Teleport = TeleportMode.Checked);
             else
                 Teleport = TeleportMode.Checked;
-            return Teleport && IgnnoreBattle && IsInTeleportLocation;
+            return Teleport && IgnoreBattle && IsInTeleportLocation;
         }
         
         private async Task<(ulong, ulong)> GetLastSaveTime(ulong init, CancellationToken token)
