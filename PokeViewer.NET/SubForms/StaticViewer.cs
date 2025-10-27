@@ -234,13 +234,19 @@ namespace PokeViewer.NET.SubForms
                         if (PokemonCombo.SelectedIndex < 0)
                         {
                             timer.Stop();
-                            MessageBox.Show("Target Species is empty!");
+                            if (InvokeRequired)
+                                Invoke(() => MessageBox.Show(this, "Target Species is empty!"));
+                            else
+                                MessageBox.Show(this, "Target Species is empty!");
                             return;
                         }
                         if (FormCombo.Visible && FormCombo.SelectedIndex < 0)
                         {
                             timer.Stop();
-                            MessageBox.Show("Target Form is empty!");
+                            if (InvokeRequired)
+                                Invoke(() => MessageBox.Show(this, "Target Form is empty!"));
+                            else
+                                MessageBox.Show(this, "Target Form is empty!");
                             return;
                         }
                     });                    
@@ -250,20 +256,29 @@ namespace PokeViewer.NET.SubForms
                     if (PokemonCombo.SelectedIndex < 0)
                     {
                         timer.Stop();
-                        MessageBox.Show("Target Species is empty!");
+                        if (InvokeRequired)
+                            Invoke(() => MessageBox.Show(this, "Target Species is empty!"));
+                        else
+                            MessageBox.Show(this, "Target Species is empty!");
                         return;
                     }
                     if (FormCombo.Visible && FormCombo.SelectedIndex < 0)
                     {
                         timer.Stop();
-                        MessageBox.Show("Target Form is empty!");
+                        if (InvokeRequired)
+                            Invoke(() => MessageBox.Show(this, "Target Form is empty!"));
+                        else
+                            MessageBox.Show(this, "Target Form is empty!");
                         return;
                     }
                 }
                 if (encounterFilters.Count == 0 || encounterFilters.All(x => !x.Enabled))
                 {
                     timer.Stop();
-                    MessageBox.Show("No Filter Active!");
+                    if (InvokeRequired)
+                        Invoke(() => MessageBox.Show(this, "No Filter Active!"));
+                    else
+                        MessageBox.Show(this, "No Filter Active!");
                     return;
                 }
                 if (button1.Enabled)
@@ -1719,11 +1734,17 @@ ReSave:
                         throw new Exception($"{(ScanTask.IsFaulted ? ScanTask.Exception!.InnerException!.ToString() : OverworldTask.Exception!.InnerException!.ToString())}");
                     if (ScanTask.IsCanceled || OverworldTask.IsCanceled)
                         throw new OperationCanceledException();
-                    MessageBox.Show("Completed!");
+                    if (InvokeRequired)
+                        Invoke(() => MessageBox.Show(this, "Completed!"));
+                    else
+                        MessageBox.Show(this, "Completed!");
                 }
                 catch (OperationCanceledException)
                 {
-                    MessageBox.Show("The operation is canceled!");
+                    if (InvokeRequired)
+                        Invoke(() => MessageBox.Show(this, "The operation is canceled!"));
+                    else
+                        MessageBox.Show(this, "The operation is canceled!");
                 }
                 catch (Exception ex)
                 {
@@ -1741,7 +1762,10 @@ ReSave:
                                 MessageBox.Show(this, soketEx.ToString(), "Sokect Connetion Exception!");
                         }
                     }
-                    MessageBox.Show(ex.ToString());
+                    if (InvokeRequired)
+                        Invoke(() => MessageBox.Show(this, ex.ToString()));
+                    else
+                        MessageBox.Show(this, ex.ToString());
                 }
             }
             EnableOptions();
@@ -1775,11 +1799,18 @@ ReSave:
                         throw new Exception($"{(ScanTask.IsFaulted ? ScanTask.Exception!.InnerException!.ToString() : OverworldTask.Exception!.InnerException!.ToString())}");
                     if (ScanTask.IsCanceled || OverworldTask.IsCanceled)
                         throw new OperationCanceledException();
-                    MessageBox.Show("Completed!");
+
+                    if (InvokeRequired)
+                        Invoke(() => MessageBox.Show(this, "Completed!"));
+                    else
+                        MessageBox.Show(this, "Completed!");
                 }
                 catch (OperationCanceledException)
                 {
-                    MessageBox.Show("The operation is canceled!");
+                    if (InvokeRequired)
+                        Invoke(() => MessageBox.Show(this, "The operation is canceled!"));
+                    else
+                        MessageBox.Show(this, "The operation is canceled!");
                 }
                 catch (Exception ex)
                 {
@@ -1791,10 +1822,16 @@ ReSave:
                         }
                         catch (SocketException soketEx)
                         {
-                            MessageBox.Show(this, soketEx.ToString(), "Sokect Connetion Exception!");
+                            if (InvokeRequired)
+                                Invoke(() => MessageBox.Show(this, soketEx.ToString(), "Sokect Connetion Exception!"));
+                            else
+                                MessageBox.Show(this, soketEx.ToString(), "Sokect Connetion Exception!");
                         }
                     }
-                    MessageBox.Show(ex.ToString());
+                    if (InvokeRequired)
+                        Invoke(() => MessageBox.Show(this, ex.ToString()));
+                    else
+                        MessageBox.Show(this, ex.ToString());
                 }
             }
             EnableOptions();
@@ -1812,7 +1849,10 @@ ReSave:
                 }
                 catch (SocketException ex)
                 {
-                    MessageBox.Show(this, ex.ToString(), "Soket Exception!", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    if (InvokeRequired)
+                        Invoke(() => MessageBox.Show(this, ex.ToString(), "Soket Exception!", MessageBoxButtons.OK, MessageBoxIcon.Error));
+                    else
+                        MessageBox.Show(this, ex.ToString(), "Soket Exception!", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
                 System.Windows.Forms.Application.Restart();
                 canceled = false;
@@ -1824,7 +1864,10 @@ ReSave:
                     return;
                 else if (cts.IsCancellationRequested || canceled)
                 {
-                    MessageBox.Show("Process was alreadey canceled!");
+                    if (InvokeRequired)
+                        Invoke(() => MessageBox.Show(this, "Process was alreadey canceled!"));
+                    else
+                        MessageBox.Show(this, "Process was alreadey canceled!");
                     return;
                 }
 
