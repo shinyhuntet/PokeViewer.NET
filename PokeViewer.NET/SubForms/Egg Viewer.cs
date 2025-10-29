@@ -1770,7 +1770,7 @@ redo:
             {
                 await Task.Delay(0_500, token).ConfigureAwait(false);
                 BlankVal =await PicnicState(token).ConfigureAwait(false);
-                LogUtil.LogText($"PicnicState: {BlankVal}");
+                //LogUtil.LogText($"PicnicState: {BlankVal}");
                 if (Watch.Elapsed > TimeSpan.FromSeconds(10))
                     await SetPicnicState(token).ConfigureAwait(false);
             }
@@ -1838,8 +1838,8 @@ redo:
                     HoldFillings.Add(3 * EatItem1[i].Item2);
                 }
             }
-            LogUtil.LogText($"Ingredients Count: {count}");
-            LogUtil.LogText($"Ingredients HoldFillings: {string.Join("/", HoldFillings)}");
+            //LogUtil.LogText($"Ingredients Count: {count}");
+            //LogUtil.LogText($"Ingredients HoldFillings: {string.Join("/", HoldFillings)}");
 
             if (!string.IsNullOrEmpty(Item1Value.Text))
             {
@@ -2004,7 +2004,7 @@ redo:
                 await SetStick(LEFT, 0, -5000, 0_500, token).ConfigureAwait(false); // Face down to basket
                 await SetStick(LEFT, 0, 0, 0, token).ConfigureAwait(false);
             }
-            LogUtil.LogText($"{Environment.NewLine}{ChangeLanguageString(Language.SelectedIndex, 18)}!{Environment.NewLine}");
+            //LogUtil.LogText($"{Environment.NewLine}{ChangeLanguageString(Language.SelectedIndex, 18)}!{Environment.NewLine}");
             BasketCount.Text = $"{ChangeLanguageString(Language.SelectedIndex, 18)}!";
             await Task.Delay(0_500, token).ConfigureAwait(false);
             await SetStick(LEFT, 0, -10000, 0_300, token).ConfigureAwait(false); // Face down to basket
@@ -2013,7 +2013,7 @@ redo:
             await SetStick(LEFT, 0, 10000, 0_310, token).ConfigureAwait(false); // Face up to basket
             await SetStick(LEFT, 0, 0, 0, token).ConfigureAwait(false);
 
-            LogUtil.LogText($"{Environment.NewLine}{ChangeLanguageString(Language.SelectedIndex, 29)}!{Environment.NewLine}");
+            //LogUtil.LogText($"{Environment.NewLine}{ChangeLanguageString(Language.SelectedIndex, 29)}!{Environment.NewLine}");
             BasketCount.Text = $"{ChangeLanguageString(Language.SelectedIndex, 29)}!";
             for (int i = 0; i < EatItem1.Count; i++)
             {

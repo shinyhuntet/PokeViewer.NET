@@ -2065,9 +2065,9 @@ ReSave:
                         DateTime CurDateTime = TimeZoneInfo.ConvertTimeFromUtc(epoch.AddSeconds(CurrentTime), info);
                         if ((seed != seed_new || EnrollmentDate - TimeSpan.FromMinutes(1.0) < CurDateTime) && Invoke(() => OutbreakType.SelectedIndex) > 0)
                         {
-                            LogUtil.LogText($"Target outbreak is lost! Adjust time{Environment.NewLine}Current seed(New): {seed_new:X}, Desired seed: {seed:X}");
+                            //LogUtil.LogText($"Target outbreak is lost! Adjust time{Environment.NewLine}Current seed(New): {seed_new:X}, Desired seed: {seed:X}");
                             await TimeAdjustToPreviousTime(seed, (ulong)unixTime, token).ConfigureAwait(false);
-                            LogUtil.LogText($"Target outbreak is found! Adjusting time is success!{Environment.NewLine}Set Time: {TimeZoneInfo.ConvertTimeFromUtc(epoch.AddSeconds(unixTime), info): yyyy/MM/dd HH:mm:ss}{Environment.NewLine}Current seed(New): {seed_new:X}, Desired seed: {seed:X}");
+                            //LogUtil.LogText($"Target outbreak is found! Adjusting time is success!{Environment.NewLine}Set Time: {TimeZoneInfo.ConvertTimeFromUtc(epoch.AddSeconds(unixTime), info): yyyy/MM/dd HH:mm:ss}{Environment.NewLine}Current seed(New): {seed_new:X}, Desired seed: {seed:X}");
                             init = 0;
                             lastsavedinit = 0;
                             Invoke(new Action(() => Reset.Checked = true));
@@ -2327,9 +2327,9 @@ ReSave:
                     }
                     if (Invoke(() => TimeCombo.SelectedIndex) > 0 && !spawnfound)
                     {
-                        LogUtil.LogText("Target pokemon is not found! Adjust time");
+                        //LogUtil.LogText("Target pokemon is not found! Adjust time");
                         await TimeAdjustToPreviousTime(seed, (ulong)unixTime, token).ConfigureAwait(false);
-                        LogUtil.LogText($"Target outbreak and Pokemon are found! Adjusting time is success!{Environment.NewLine}Set Time: {TimeZoneInfo.ConvertTimeFromUtc(epoch.AddSeconds(unixTime), info): yyyy/MM/dd HH:mm:ss}{Environment.NewLine}Current seed(New): {seed_new:X}, Desired seed: {seed:X}");
+                        //LogUtil.LogText($"Target outbreak and Pokemon are found! Adjusting time is success!{Environment.NewLine}Set Time: {TimeZoneInfo.ConvertTimeFromUtc(epoch.AddSeconds(unixTime), info): yyyy/MM/dd HH:mm:ss}{Environment.NewLine}Current seed(New): {seed_new:X}, Desired seed: {seed:X}");
                         if (InvokeRequired)
                         {
                             Invoke(() =>
